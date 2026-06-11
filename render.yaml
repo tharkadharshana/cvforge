@@ -1,0 +1,28 @@
+# Render blueprint — deploys the CVForge FastAPI backend.
+# In Render: New > Blueprint > pick your repo. Render reads this file.
+# After it deploys, open the service > Environment and paste your DEEPSEEK_API_KEY / GEMINI_API_KEY.
+services:
+  - type: web
+    name: cvforge-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.4"
+      - key: SECRET_KEY
+        generateValue: true          # Render generates a strong secret for you
+      - key: DEEPSEEK_API_KEY
+        sync: false                  # you paste this in the dashboard
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false                  # your email, to access /admin/* support endpoints
+      - key: LOG_JSON
+        value: "true"
+      # DATABASE_URL is omitted on purpose -> defaults to SQLite (fine for testing).
+      # For persistent data later, add: DATABASE_URL = your Neon/Supabase Postgres URL
+      # Billing/Polar vars are optional — leave unset to run on free credits only.
