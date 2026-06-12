@@ -6,6 +6,17 @@ from ..logging_config import get_logger
 
 log = get_logger("llm")
 
+# Substrings that indicate a transient, retryable provider error (overload /
+# rate limiting), as opposed to a permanent failure (bad request, auth, etc).
+_RETRYABLE_MARKERS = ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "overloaded", "rate limit")
+_MAX_RETRIES = 2
+_RETRY_BASE_DELAY_S = 1.5
+
+
+def is_retryable(e: Exception) -> bool:
+    s = str(e)
+    return any(m.lower() in s.lower() for m in _RETRYABLE_MARKERS)
+
 
 class LLMProvider(ABC):
     name: str
@@ -19,13 +30,21 @@ class LLMProvider(ABC):
         model_tier = "pro" if pro else "std"
         log.info("%s call start tier=%s json=%s sys_chars=%d user_chars=%d",
                  self.name, model_tier, json_mode, len(system), len(user))
-        t0 = time.perf_counter()
-        try:
-            text, usage = self._call(system, user, json_mode, pro)
-        except Exception as e:
-            dt = (time.perf_counter() - t0) * 1000
-            log.error("%s call FAILED tier=%s after %.0fms: %s", self.name, model_tier, dt, e, exc_info=True)
-            raise
+        for attempt in range(_MAX_RETRIES + 1):
+            t0 = time.perf_counter()
+            try:
+                text, usage = self._call(system, user, json_mode, pro)
+            except Exception as e:
+                dt = (time.perf_counter() - t0) * 1000
+                if is_retryable(e) and attempt < _MAX_RETRIES:
+                    delay = _RETRY_BASE_DELAY_S * (2 ** attempt)
+                    log.warning("%s call failed (retryable) tier=%s attempt=%d/%d after %.0fms: %s -- retrying in %.1fs",
+                                 self.name, model_tier, attempt + 1, _MAX_RETRIES + 1, dt, e, delay)
+                    time.sleep(delay)
+                    continue
+                log.error("%s call FAILED tier=%s after %.0fms: %s", self.name, model_tier, dt, e, exc_info=True)
+                raise
+            break
         dt = (time.perf_counter() - t0) * 1000
         log.info("%s call ok tier=%s %.0fms resp_chars=%d tokens_in=%s tokens_out=%s",
                  self.name, model_tier, dt, len(text or ""),
