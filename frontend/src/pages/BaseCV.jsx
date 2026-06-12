@@ -4,6 +4,9 @@ import { api } from "../lib/api";
 import { useCVStatus } from "../lib/cvstatus";
 import { Banner, Spinner } from "../components/ui";
 
+const splitComma = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
+const splitLines = (s) => s.split("\n").map((x) => x.replace(/^[-•]\s*/, "").trim()).filter(Boolean);
+
 const empty = {
   contact: { full_name: "", email: "", phone: "", location: "", linkedin: "", github: "", website: "" },
   summary: "", skills: {}, experience: [], projects: [], education: [],
@@ -19,6 +22,7 @@ export default function BaseCV() {
   const [err, setErr] = useState("");
   const [qual, setQual] = useState("");
   const [qbusy, setQbusy] = useState(false);
+  const [rev, setRev] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -33,8 +37,6 @@ export default function BaseCV() {
 
   const set = (patch) => setCv({ ...cv, ...patch });
   const setC = (k, v) => setCv({ ...cv, contact: { ...cv.contact, [k]: v } });
-  const splitComma = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
-  const splitLines = (s) => s.split("\n").map((x) => x.replace(/^[-•]\s*/, "").trim()).filter(Boolean);
 
   const save = async () => {
     setErr(""); setMsg(""); setBusy(true);
@@ -45,7 +47,7 @@ export default function BaseCV() {
 
   const addQual = async () => {
     setErr(""); setMsg(""); setQbusy(true);
-    try { const u = await api.addQualification(qual); setCv({ ...empty, ...u }); setQual(""); setMsg("Merged into CV."); }
+    try { const u = await api.addQualification(qual); setCv({ ...empty, ...u }); setRev((r) => r + 1); setQual(""); setMsg("Merged into CV."); }
     catch (e) { setErr(e.message); }
     finally { setQbusy(false); }
   };
@@ -81,11 +83,11 @@ export default function BaseCV() {
       <Card title="Skills" action={<AddBtn onClick={() => set({ skills: { ...cv.skills, "New category": [] } })} label="category" />}>
         {Object.keys(cv.skills).length === 0 && <Empty />}
         {Object.entries(cv.skills).map(([cat, items], i) => (
-          <div key={i} className="flex flex-col sm:flex-row gap-2 mb-2 items-start">
+          <div key={`${rev}-${i}`} className="flex flex-col sm:flex-row gap-2 mb-2 items-start">
             <input className="field sm:w-48" value={cat}
               onChange={(e) => { const s = {}; Object.entries(cv.skills).forEach(([k, v]) => { s[k === cat ? e.target.value : k] = v; }); set({ skills: s }); }} placeholder="Category" />
-            <input className="field flex-1" value={(items || []).join(", ")}
-              onChange={(e) => set({ skills: { ...cv.skills, [cat]: splitComma(e.target.value) } })} placeholder="comma, separated, skills" />
+            <CommaInput className="field flex-1" value={items}
+              onChange={(arr) => set({ skills: { ...cv.skills, [cat]: arr } })} placeholder="comma, separated, skills" />
             <button onClick={() => { const s = { ...cv.skills }; delete s[cat]; set({ skills: s }); }} className="label text-bad shrink-0 py-2">remove</button>
           </div>
         ))}
@@ -116,7 +118,7 @@ export default function BaseCV() {
               <input className="field" value={p.name} onChange={(ev) => upd({ name: ev.target.value })} placeholder="Name" />
               <input className="field" value={p.link} onChange={(ev) => upd({ link: ev.target.value })} placeholder="Link" />
             </div>
-            <input className="field mt-2" value={(p.tech || []).join(", ")} onChange={(ev) => upd({ tech: splitComma(ev.target.value) })} placeholder="Tech (comma separated)" />
+            <CommaInput key={`tech-${rev}`} className="field mt-2" value={p.tech} onChange={(arr) => upd({ tech: arr })} placeholder="Tech (comma separated)" />
             <input className="field mt-2" value={p.description} onChange={(ev) => upd({ description: ev.target.value })} placeholder="Description" />
             <Bullets value={p.bullets} onChange={(b) => upd({ bullets: b })} split={splitLines} />
           </>
@@ -142,8 +144,8 @@ export default function BaseCV() {
           onChange={(e) => set({ awards: splitLines(e.target.value) })} placeholder="One per line" />
       </Card>
       <Card title="Languages">
-        <input className="field" value={(cv.languages || []).join(", ")}
-          onChange={(e) => set({ languages: splitComma(e.target.value) })} placeholder="comma separated" />
+        <CommaInput key={`languages-${rev}`} className="field" value={cv.languages}
+          onChange={(arr) => set({ languages: arr })} placeholder="comma separated" />
       </Card>
 
       <Card title="Quick add — dump a new qualification">
@@ -185,6 +187,14 @@ function ListEditor({ title, items, onChange, template, render }) {
         </div>
       ))}
     </Card>
+  );
+}
+function CommaInput({ className, value, onChange, placeholder }) {
+  const [text, setText] = useState((value || []).join(", "));
+  return (
+    <input className={className} value={text}
+      onChange={(e) => { setText(e.target.value); onChange(splitComma(e.target.value)); }}
+      placeholder={placeholder} />
   );
 }
 function Bullets({ value, onChange, split }) {
