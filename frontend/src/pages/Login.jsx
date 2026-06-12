@@ -64,7 +64,7 @@ export function AuthShell({ heading, sub, children }) {
           </p>
         </div>
 
-        <div className="label">ATS-tuned · DeepSeek + Gemini</div>
+        <div className="label">ATS-tuned · AI-powered</div>
       </div>
 
       {/* form */}

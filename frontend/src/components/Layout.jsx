@@ -61,7 +61,7 @@ export default function Layout() {
 
       <footer className="border-t border-line">
         <div className="max-w-5xl mx-auto px-5 py-4 label flex justify-between">
-          <span>CVForge — ATS-tuned · DeepSeek + Gemini</span>
+          <span>CVForge — ATS-tuned · AI-powered</span>
           <span className="text-line2">v0.3</span>
         </div>
       </footer>
