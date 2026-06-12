@@ -5,7 +5,7 @@ import { useCVStatus } from "../lib/cvstatus";
 import { useCredits } from "../lib/credits";
 import { Banner, Spinner, ScoreGauge } from "../components/ui";
 import CVView from "../components/CVView";
-import { DownloadBar, CritiquePanel } from "./ApplicationDetail";
+import { DownloadBar, CritiquePanel, ImproveButton } from "./ApplicationDetail";
 
 export default function Generate() {
   const nav = useNavigate();
@@ -95,7 +95,10 @@ export default function Generate() {
         <div className="mt-8 space-y-6 rise">
           <div className="flex items-center justify-between gap-4 panel p-5 flex-wrap">
             <ScoreGauge score={result.critique?.ats_score || 0} />
-            <DownloadBar id={result.application_id} />
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <ImproveButton applicationId={result.application_id} onImproved={(r) => setResult({ ...result, ...r })} />
+              <DownloadBar id={result.application_id} />
+            </div>
           </div>
           <CritiquePanel critique={result.critique} />
           <div>

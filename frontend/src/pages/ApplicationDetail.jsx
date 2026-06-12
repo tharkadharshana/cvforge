@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, downloadFile } from "../lib/api";
+import { useCredits } from "../lib/credits";
 import { Banner, Spinner, ScoreGauge } from "../components/ui";
 import CVView from "../components/CVView";
 
@@ -26,6 +27,35 @@ export function DownloadBar({ id }) {
           </button>
         ))}
       </div>
+      {err && <Banner>{err}</Banner>}
+    </div>
+  );
+}
+
+export function ImproveButton({ applicationId, onImproved }) {
+  const { refresh: refreshCredits } = useCredits();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [paywall, setPaywall] = useState(false);
+
+  const run = async () => {
+    setErr(""); setPaywall(false); setBusy(true);
+    try {
+      const r = await api.improveApplication(applicationId);
+      onImproved(r);
+      refreshCredits();
+    } catch (e) {
+      if (e.status === 402) setPaywall(true);
+      else setErr(e.message);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-2">
+      <button className="btn-ghost text-[11px] px-3 py-2" disabled={busy} onClick={run}>
+        {busy ? "Improving…" : "↑ Improve score (1 credit)"}
+      </button>
+      {paywall && <div className="text-[12px]"><Link to="/billing" className="text-accent">Out of credits — top up →</Link></div>}
       {err && <Banner>{err}</Banner>}
     </div>
   );
@@ -88,10 +118,15 @@ export default function ApplicationDetail() {
   if (err) return <Banner>{err}</Banner>;
   if (!app) return null;
 
+  const onImproved = (r) => {
+    setApp({ ...app, tailored_cv: r.tailored_cv, cover_letter: r.cover_letter,
+      ats_score: r.critique?.ats_score || 0, critique: r.critique });
+  };
+
   return (
     <div className="rise space-y-6">
       <Link to="/applications" className="label text-accent">← History</Link>
-      <div className="flex items-center justify-between gap-4 panel p-5">
+      <div className="flex items-center justify-between gap-4 panel p-5 flex-wrap">
         <div className="flex items-center gap-5">
           <ScoreGauge score={app.ats_score || 0} />
           <div>
@@ -99,7 +134,10 @@ export default function ApplicationDetail() {
             <div className="font-mono text-[12px] text-muted">{app.company || "—"}</div>
           </div>
         </div>
-        <DownloadBar id={app.id} />
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <ImproveButton applicationId={app.id} onImproved={onImproved} />
+          <DownloadBar id={app.id} />
+        </div>
       </div>
 
       <CritiquePanel critique={app.critique} />

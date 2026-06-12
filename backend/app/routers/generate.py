@@ -66,6 +66,48 @@ def generate(payload: schemas.GenerateIn, db: Session = Depends(get_db),
     )
 
 
+@router.post("/applications/{app_id}/improve", response_model=schemas.GenerateOut)
+def improve_application(app_id: int, db: Session = Depends(get_db),
+                         user: models.User = Depends(get_current_user)):
+    a = _get_app(db, user, app_id)
+
+    billing.maybe_refill_monthly(db, user)
+    if not billing.has_credits(user):
+        log.warning("improve blocked user=%s: out of credits (%s)", user.id, user.credits)
+        audit.record("generate_improve", status="blocked", user_id=user.id,
+                     meta={"why": "no_credits", "credits": user.credits or 0, "application_id": app_id})
+        raise HTTPException(status_code=402, detail="Out of credits. Upgrade to keep improving.")
+
+    base = CVData.model_validate(user.base_cv.data)
+    prev_cv = CVData.model_validate(a.tailored_cv)
+    log.info("improve user=%s application=%s prev_score=%s credits=%s",
+             user.id, a.id, a.ats_score, user.credits)
+    try:
+        tailored, cover, crit = pipeline.improve_application(
+            base, prev_cv, a.cover_letter, a.critique or {}, a.job_description, a.company, a.job_title
+        )
+    except Exception as e:
+        audit.record("generate_improve", status="failed", user_id=user.id,
+                     meta={"why": "llm_error", "error": str(e)[:200], "application_id": a.id})
+        raise HTTPException(status_code=502, detail=f"LLM generation failed: {e}")
+
+    a.tailored_cv = tailored.model_dump()
+    a.cover_letter = cover
+    a.ats_score = int(crit.get("ats_score", 0))
+    a.critique = crit
+    db.commit()
+    db.refresh(a)
+    billing.charge_generation(db, user, ref=f"improve:{a.id}")
+    audit.record("generate_improve", status="ok", user_id=user.id,
+                 meta={"application_id": a.id, "ats_score": a.ats_score, "credits_after": user.credits})
+    return schemas.GenerateOut(
+        application_id=a.id,
+        tailored_cv=tailored,
+        cover_letter=cover,
+        critique=schemas.CritiqueOut(**crit),
+    )
+
+
 @router.get("/applications")
 def list_applications(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     apps = db.query(models.Application).filter(models.Application.user_id == user.id) \

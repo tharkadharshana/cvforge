@@ -69,3 +69,32 @@ def generate_application(base_cv: CVData, job_description: str, company: str, jo
         crit.setdefault(k, d)
     log.info("generate_application: done ats_score=%s", crit.get("ats_score"))
     return tailored, cover, crit
+
+
+def improve_application(base_cv: CVData, tailored_cv: CVData, cover_letter_text: str, critique: dict,
+                         job_description: str, company: str, job_title: str):
+    log.info("improve_application: company=%r title=%r prev_score=%s",
+             company, job_title, critique.get("ats_score"))
+    base = base_cv.model_dump()
+    prev_cv = tailored_cv.model_dump()
+
+    def _tailor():
+        sys, usr = prompts.improve_cv(base, job_description, prev_cv, critique)
+        return CVData.model_validate(drafter().complete_json(sys, usr, pro=True))
+    tailored = _stage("improve_tailor_cv", _tailor)
+
+    def _cover():
+        sys, usr = prompts.improve_cover_letter(tailored.model_dump(), cover_letter_text, job_description, company, job_title, critique)
+        return drafter().complete(sys, usr).strip()
+    cover = _stage("improve_cover_letter", _cover)
+
+    def _crit():
+        sys, usr = prompts.critique(tailored.model_dump(), cover, job_description)
+        return critic().complete_json(sys, usr)
+    crit = _stage("critique", _crit)
+
+    for k, d in (("ats_score", 0), ("keyword_matches", []), ("missing_keywords", []),
+                 ("human_tone_notes", []), ("suggestions", [])):
+        crit.setdefault(k, d)
+    log.info("improve_application: done ats_score=%s", crit.get("ats_score"))
+    return tailored, cover, crit

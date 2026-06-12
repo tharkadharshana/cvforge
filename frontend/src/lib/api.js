@@ -72,6 +72,7 @@ export const api = {
   generate: (payload) => req("/generate", { method: "POST", body: payload }),
   listApplications: () => req("/applications"),
   getApplication: (id) => req(`/applications/${id}`),
+  improveApplication: (id) => req(`/applications/${id}/improve`, { method: "POST" }),
 
   // billing
   billingSummary: () => req("/billing/summary"),
