@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from .. import models, schemas, billing, audit
+from ..config import settings
 from ..database import get_db
 from ..auth import get_current_user
 from ..schemas import CVData
@@ -31,15 +32,20 @@ def generate(payload: schemas.GenerateIn, db: Session = Depends(get_db),
     log.info("generate user=%s company=%r title=%r credits=%s",
              user.id, payload.company, payload.job_title, user.credits)
     base = CVData.model_validate(user.base_cv.data)
+    min_ats_score = billing.min_ats_score_for(user)
     try:
-        tailored, cover, crit = pipeline.generate_application(
-            base, payload.job_description, payload.company, payload.job_title
+        tailored, cover, crit = pipeline.generate_application_guaranteed(
+            base, payload.job_description, payload.company, payload.job_title,
+            min_ats_score=min_ats_score, max_iterations=settings.ats_guarantee_max_iterations,
         )
     except Exception as e:
         audit.record("generate", status="failed", user_id=user.id,
                      meta={"why": "llm_error", "error": str(e)[:200],
                            "company": payload.company, "title": payload.job_title})
         raise HTTPException(status_code=502, detail=f"LLM generation failed: {e}")
+    if not crit.get("meets_ats_guarantee", True):
+        log.warning("generate user=%s: ats guarantee unmet score=%s target=%s after %s iterations",
+                    user.id, crit.get("ats_score"), min_ats_score, crit.get("ats_iterations"))
     app = models.Application(
         user_id=user.id,
         job_title=payload.job_title,
@@ -56,6 +62,8 @@ def generate(payload: schemas.GenerateIn, db: Session = Depends(get_db),
     billing.charge_generation(db, user, ref=str(app.id))
     audit.record("generate", status="ok", user_id=user.id,
                  meta={"application_id": app.id, "ats_score": app.ats_score,
+                       "target_ats_score": min_ats_score, "ats_iterations": crit.get("ats_iterations"),
+                       "meets_ats_guarantee": crit.get("meets_ats_guarantee"),
                        "company": payload.company, "title": payload.job_title,
                        "credits_after": user.credits})
     return schemas.GenerateOut(
@@ -91,6 +99,7 @@ def improve_application(app_id: int, db: Session = Depends(get_db),
                      meta={"why": "llm_error", "error": str(e)[:200], "application_id": a.id})
         raise HTTPException(status_code=502, detail=f"LLM generation failed: {e}")
 
+    pipeline.annotate_ats_guarantee(crit, billing.min_ats_score_for(user))
     a.tailored_cv = tailored.model_dump()
     a.cover_letter = cover
     a.ats_score = int(crit.get("ats_score", 0))

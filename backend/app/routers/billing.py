@@ -15,7 +15,8 @@ log = get_logger("billing.api")
 def _plan_out(p: billing.Plan) -> schemas.PlanOut:
     return schemas.PlanOut(id=p.id, name=p.name, price_usd=p.price_usd, credits=p.credits,
                            recurring=p.recurring, available=bool(p.polar_product_id),
-                           price_per_credit=p.price_per_credit, margin_pct=p.margin_pct)
+                           price_per_credit=p.price_per_credit, margin_pct=p.margin_pct,
+                           min_ats_score=p.min_ats_score)
 
 
 @router.get("/summary", response_model=schemas.BillingSummary)

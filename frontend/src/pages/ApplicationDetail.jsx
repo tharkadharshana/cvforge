@@ -73,9 +73,20 @@ function Chips({ items, tone }) {
 
 export function CritiquePanel({ critique }) {
   if (!critique) return null;
+  const target = critique.target_ats_score || 0;
   return (
     <div className="panel p-5 space-y-4">
       <h2 className="label">ATS critique (cross-model)</h2>
+      {target > 0 && (
+        critique.meets_ats_guarantee ? (
+          <Banner kind="ok">Meets your plan's {target}% ATS guarantee (score {critique.ats_score}%).</Banner>
+        ) : (
+          <Banner kind="error">
+            Couldn't reach your plan's {target}% ATS guarantee after {critique.ats_iterations || 1} attempt(s)
+            (score {critique.ats_score}%). Add the missing keywords below, then hit "Improve" to try again.
+          </Banner>
+        )
+      )}
       <div>
         <div className="label mb-1.5 text-good">Matched keywords</div>
         <Chips items={critique.keyword_matches} tone="good" />

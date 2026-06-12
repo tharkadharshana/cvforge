@@ -17,10 +17,15 @@ class Settings(BaseSettings):
 
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.5-flash"
-    gemini_model_pro: str = "gemini-3.1-pro"
+    gemini_model_pro: str = "gemini-3.5-flash"
 
     drafter_provider: str = "gemini"
     critic_provider: str = "deepseek"
+
+    # if the primary provider above fails (incl. 503/overloaded after retries),
+    # retry the same call on this provider instead. empty = no fallback.
+    drafter_fallback_provider: str = "deepseek"
+    critic_fallback_provider: str = "gemini"
 
     # comma-separated emails granted admin/support access (audit + manual credit adjust)
     admin_emails: str = ""
@@ -29,6 +34,14 @@ class Settings(BaseSettings):
     billing_enabled: bool = True
     app_url: str = "http://localhost:5173"          # frontend base, for checkout return
     credits_per_generation: int = 1                  # credits a single tailored CV costs
+
+    # --- ATS score guarantee ---
+    # plans can promise a minimum ATS score (see Plan.min_ats_score in BILLING_PLANS_JSON).
+    # if the first pass scores below that, the pipeline auto-improves and re-scores,
+    # up to this many total passes (1 initial + retries), without extra credit charge.
+    ats_guarantee_max_iterations: int = 3
+    # guarantee for users on a plan that doesn't set min_ats_score (e.g. free/trial). 0 = no guarantee.
+    default_min_ats_score: int = 0
     free_tier_mode: str = "trial"                    # "trial" | "forever_free"
     free_trial_credits: int = 10                     # granted once on signup (trial mode)
     free_monthly_credits: int = 5                    # refilled monthly (forever_free mode)
@@ -41,9 +54,10 @@ class Settings(BaseSettings):
     polar_success_url: str = "http://localhost:5173/billing?status=success"
     billing_provider: str = "polar"
     # Plans: map your Polar product to credits. polar_product_id from Polar dashboard. recurring=true for subscriptions.
+    # min_ats_score: guaranteed minimum ATS score for this plan (0 = no guarantee).
     billing_plans_json: str = (
-        '[{"id":"starter","name":"Starter","price_usd":9,"credits":100,"polar_product_id":"","recurring":false},'
-        '{"id":"pro","name":"Pro Monthly","price_usd":29,"credits":500,"polar_product_id":"","recurring":true}]'
+        '[{"id":"starter","name":"Starter","price_usd":9,"credits":100,"polar_product_id":"","recurring":false,"min_ats_score":80},'
+        '{"id":"pro","name":"Pro Monthly","price_usd":29,"credits":500,"polar_product_id":"","recurring":true,"min_ats_score":85}]'
     )
 
 

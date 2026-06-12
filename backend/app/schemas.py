@@ -140,6 +140,7 @@ class PlanOut(BaseModel):
     available: bool = False          # true when a Polar product is configured
     price_per_credit: float = 0.0
     margin_pct: float = 0.0
+    min_ats_score: int = 0           # guaranteed minimum ATS score (0 = no guarantee)
 
 
 class BillingSummary(BaseModel):
@@ -185,6 +186,9 @@ class CritiqueOut(BaseModel):
     missing_keywords: list[str] = []
     human_tone_notes: list[str] = []
     suggestions: list[str] = []
+    target_ats_score: int = 0
+    meets_ats_guarantee: bool = True
+    ats_iterations: int = 1
 
 
 class GenerateOut(BaseModel):
