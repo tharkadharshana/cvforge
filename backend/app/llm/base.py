@@ -18,6 +18,26 @@ def is_retryable(e: Exception) -> bool:
     return any(m.lower() in s.lower() for m in _RETRYABLE_MARKERS)
 
 
+def call_with_key_rotation(provider_name: str, keys: list[str], attempt):
+    """Call `attempt(key)` using the first key; if it fails with a retryable
+    error (e.g. 429/quota exhausted on that key) move on to the next key.
+    Raises the last error once every key has been tried."""
+    if not keys:
+        raise RuntimeError(f"{provider_name}: no API key configured")
+    last_exc: Exception | None = None
+    for i, key in enumerate(keys):
+        try:
+            return attempt(key)
+        except Exception as e:
+            last_exc = e
+            if is_retryable(e) and i < len(keys) - 1:
+                log.warning("%s key #%d/%d failed (retryable): %s -- trying next key",
+                             provider_name, i + 1, len(keys), e)
+                continue
+            raise
+    raise last_exc
+
+
 class LLMProvider(ABC):
     name: str
 

@@ -13,12 +13,18 @@ class Settings(BaseSettings):
     # postgresql+psycopg://postgres.<ref>:<password>@<region>.pooler.supabase.com:6543/postgres?sslmode=require
     database_url: str = "sqlite:///./cvforge.db"
 
+    # single key (back-compat) and/or comma-separated list of keys. If
+    # *_API_KEYS is set, it's used and *_API_KEY is ignored. Extra keys let a
+    # provider rotate past a key that hits its own rate limit (429) instead
+    # of failing the request, multiplying your effective requests/minute.
     deepseek_api_key: str = ""
+    deepseek_api_keys: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"
     deepseek_model_pro: str = "deepseek-v4-pro"
 
     gemini_api_key: str = ""
+    gemini_api_keys: str = ""
     gemini_model: str = "gemini-3.5-flash"
     gemini_model_pro: str = "gemini-3.5-flash"
 
@@ -71,6 +77,19 @@ class Settings(BaseSettings):
         '[{"id":"starter","name":"Starter","price_usd":9,"credits":100,"polar_product_id":"","recurring":false,"min_ats_score":80},'
         '{"id":"pro","name":"Pro Monthly","price_usd":29,"credits":500,"polar_product_id":"","recurring":true,"min_ats_score":85}]'
     )
+
+
+    def _key_list(self, multi: str, single: str) -> list[str]:
+        keys = [k.strip() for k in multi.split(",") if k.strip()]
+        return keys or ([single] if single else [])
+
+    @property
+    def deepseek_api_keys_list(self) -> list[str]:
+        return self._key_list(self.deepseek_api_keys, self.deepseek_api_key)
+
+    @property
+    def gemini_api_keys_list(self) -> list[str]:
+        return self._key_list(self.gemini_api_keys, self.gemini_api_key)
 
 
 settings = Settings()
