@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
+from functools import lru_cache
 from sqlalchemy.orm import Session
 from .config import settings
 from .logging_config import get_logger
@@ -34,7 +35,10 @@ class Plan:
         return round((ppc - cost_per_credit) / ppc * 100, 1)
 
 
+@lru_cache(maxsize=1)
 def get_plans() -> list[Plan]:
+    # BILLING_PLANS_JSON comes from an env var fixed for the process
+    # lifetime, so parsing it once per cold start is enough.
     try:
         raw = json.loads(settings.billing_plans_json)
         return [Plan(**p) for p in raw]

@@ -14,7 +14,13 @@ from . import models  # noqa: F401  (register models)
 from .routers import auth, cv, generate, billing, jobs, admin
 
 log = get_logger("http")
-Base.metadata.create_all(bind=engine)
+
+# Only auto-create tables for the local SQLite dev DB. In production
+# (Supabase Postgres) the schema is already migrated, and running
+# create_all on every cold start adds a synchronous DB round trip to
+# every serverless invocation for no benefit.
+if settings.database_url.startswith("sqlite"):
+    Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="CVForge API", version="0.4.0")
 

@@ -19,8 +19,7 @@ def _plan_out(p: billing.Plan) -> schemas.PlanOut:
                            min_ats_score=p.min_ats_score)
 
 
-@router.get("/summary", response_model=schemas.BillingSummary)
-def summary(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+def _summary_out(db: Session, user: models.User) -> schemas.BillingSummary:
     billing.maybe_refill_monthly(db, user)
     return schemas.BillingSummary(
         billing_enabled=settings.billing_enabled,
@@ -33,12 +32,28 @@ def summary(db: Session = Depends(get_db), user: models.User = Depends(get_curre
     )
 
 
-@router.get("/ledger", response_model=list[schemas.LedgerRow])
-def ledger(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+def _ledger_out(db: Session, user: models.User) -> list[schemas.LedgerRow]:
     rows = db.query(models.CreditLedger).filter(models.CreditLedger.user_id == user.id) \
         .order_by(models.CreditLedger.created_at.desc()).limit(50).all()
     return [schemas.LedgerRow(delta=r.delta, reason=r.reason, balance_after=r.balance_after,
                               created_at=r.created_at.isoformat()) for r in rows]
+
+
+@router.get("/summary", response_model=schemas.BillingSummary)
+def summary(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    return _summary_out(db, user)
+
+
+@router.get("/ledger", response_model=list[schemas.LedgerRow])
+def ledger(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    return _ledger_out(db, user)
+
+
+@router.get("/overview", response_model=schemas.BillingOverview)
+def overview(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Combined summary + ledger in one round trip (avoids two concurrent
+    cold-start invocations for the billing page)."""
+    return schemas.BillingOverview(summary=_summary_out(db, user), ledger=_ledger_out(db, user))
 
 
 @router.post("/checkout", response_model=schemas.CheckoutOut)
