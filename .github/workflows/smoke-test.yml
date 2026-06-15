@@ -1,0 +1,31 @@
+name: Backend smoke test (deployed)
+
+# Exercises the live Vercel deployment end-to-end: auth, DB, both LLM
+# providers, the full generation pipeline, billing/credits, and downloads.
+# This creates a real user, runs real LLM calls, and spends 1 real credit —
+# so it does NOT run on every push. Run it manually after a deploy, or on
+# the weekly schedule.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Backend URL to test"
+        required: false
+        default: "https://cvforge-backend.vercel.app"
+  schedule:
+    - cron: "0 6 * * 1" # every Monday 06:00 UTC
+
+jobs:
+  smoke-test:
+    name: Smoke test deployed backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run smoke test
+        env:
+          BASE_URL: ${{ inputs.base_url || 'https://cvforge-backend.vercel.app' }}
+        run: |
+          chmod +x backend/scripts/smoke-test.sh
+          backend/scripts/smoke-test.sh
