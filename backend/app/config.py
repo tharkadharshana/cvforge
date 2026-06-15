@@ -51,9 +51,7 @@ class Settings(BaseSettings):
 
     # --- ATS score guarantee ---
     # plans can promise a minimum ATS score (see Plan.min_ats_score in BILLING_PLANS_JSON).
-    # if the first pass scores below that, the pipeline auto-improves and re-scores,
-    # up to this many total passes (1 initial + retries), without extra credit charge.
-    ats_guarantee_max_iterations: int = 3
+    # the critique step annotates whether the score meets the user's plan guarantee.
     # guarantee for users on a plan that doesn't set min_ats_score (e.g. free/trial). 0 = no guarantee.
     default_min_ats_score: int = 0
     free_tier_mode: str = "trial"                    # "trial" | "forever_free"

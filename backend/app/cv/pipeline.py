@@ -44,56 +44,11 @@ def merge_qualification(current: CVData, new_text: str) -> CVData:
     return CVData.model_validate(data)
 
 
-def generate_application(base_cv: CVData, job_description: str, company: str, job_title: str):
-    log.info("generate_application: company=%r title=%r jd_chars=%d",
-             company, job_title, len(job_description))
-    base = base_cv.model_dump()
-
-    def _tailor():
-        sys, usr = prompts.tailor_cv(base, job_description)
-        return CVData.model_validate(drafter().complete_json(sys, usr, pro=True))
-    tailored = _stage("tailor_cv", _tailor)
-
-    def _cover():
-        sys, usr = prompts.cover_letter(tailored.model_dump(), job_description, company, job_title)
-        return drafter().complete(sys, usr).strip()
-    cover = _stage("cover_letter", _cover)
-
-    def _crit():
-        sys, usr = prompts.critique(tailored.model_dump(), cover, job_description)
-        return critic().complete_json(sys, usr)
-    crit = _stage("critique", _crit)
-
-    for k, d in (("ats_score", 0), ("keyword_matches", []), ("missing_keywords", []),
-                 ("human_tone_notes", []), ("suggestions", [])):
-        crit.setdefault(k, d)
-    log.info("generate_application: done ats_score=%s", crit.get("ats_score"))
-    return tailored, cover, crit
-
-
 def annotate_ats_guarantee(crit: dict, min_ats_score: int, iterations: int = 1) -> dict:
     crit["target_ats_score"] = min_ats_score
     crit["meets_ats_guarantee"] = crit.get("ats_score", 0) >= min_ats_score
     crit["ats_iterations"] = iterations
     return crit
-
-
-def generate_application_guaranteed(base_cv: CVData, job_description: str, company: str, job_title: str,
-                                      min_ats_score: int = 0, max_iterations: int = 3):
-    """Like generate_application, but if the critique score is below
-    min_ats_score, re-runs the improve pass (re-tailor + re-critique) until
-    it meets the target or max_iterations is reached."""
-    tailored, cover, crit = generate_application(base_cv, job_description, company, job_title)
-    iterations = 1
-    while crit.get("ats_score", 0) < min_ats_score and iterations < max_iterations:
-        log.info("ats guarantee: score=%s below target=%s, retrying (%d/%d)",
-                 crit.get("ats_score"), min_ats_score, iterations + 1, max_iterations)
-        tailored, cover, crit = improve_application(
-            base_cv, tailored, cover, crit, job_description, company, job_title
-        )
-        iterations += 1
-    annotate_ats_guarantee(crit, min_ats_score, iterations)
-    return tailored, cover, crit
 
 
 def improve_application(base_cv: CVData, tailored_cv: CVData, cover_letter_text: str, critique: dict,
