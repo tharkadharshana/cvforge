@@ -16,8 +16,8 @@ export default function Billing() {
 
   const load = async () => {
     try {
-      const [s, l] = await Promise.all([api.billingSummary(), api.billingLedger()]);
-      setSum(s); setLedger(l); refreshNav();
+      const { summary, ledger } = await api.billingOverview();
+      setSum(summary); setLedger(ledger); refreshNav();
     } catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   };

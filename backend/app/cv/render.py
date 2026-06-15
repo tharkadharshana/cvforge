@@ -1,10 +1,10 @@
 from __future__ import annotations
 import io
-from docx import Document
-from docx.shared import Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from fpdf import FPDF
 from ..schemas import CVData
+
+# docx/fpdf are only needed for download endpoints, not the rest of the API -
+# import them lazily inside each render function so other routes (e.g.
+# billing) don't pay for them on a cold start.
 
 # ATS rules followed everywhere: single column, standard headings, real text,
 # no tables/text-boxes/graphics, common fonts, simple bullets.
@@ -29,6 +29,10 @@ def _contact_line(cv: CVData) -> str:
 
 # ---------------- DOCX ----------------
 def render_docx(cv: CVData) -> bytes:
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
     doc = Document()
     style = doc.styles["Normal"]
     style.font.name = "Calibri"
@@ -121,10 +125,6 @@ def render_docx(cv: CVData) -> bytes:
 
 
 # ---------------- PDF (pure python, single column) ----------------
-class _PDF(FPDF):
-    pass
-
-
 def _txt(s: str) -> str:
     # fpdf2 core fonts are latin-1; replace common unicode to keep it robust
     return (s.replace("\u2013", "-").replace("\u2014", "-")
@@ -134,7 +134,9 @@ def _txt(s: str) -> str:
 
 
 def render_pdf(cv: CVData) -> bytes:
-    pdf = _PDF(format="A4")
+    from fpdf import FPDF
+
+    pdf = FPDF(format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     pdf.set_margins(18, 15, 18)
@@ -225,7 +227,9 @@ def render_pdf(cv: CVData) -> bytes:
 
 
 def render_cover_letter_pdf(text: str, contact_line: str = "", name: str = "") -> bytes:
-    pdf = _PDF(format="A4")
+    from fpdf import FPDF
+
+    pdf = FPDF(format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     pdf.set_margins(20, 18, 20)
@@ -245,6 +249,9 @@ def render_cover_letter_pdf(text: str, contact_line: str = "", name: str = "") -
 
 
 def render_cover_letter_docx(text: str, name: str = "") -> bytes:
+    from docx import Document
+    from docx.shared import Pt
+
     doc = Document()
     doc.styles["Normal"].font.name = "Calibri"
     doc.styles["Normal"].font.size = Pt(11)

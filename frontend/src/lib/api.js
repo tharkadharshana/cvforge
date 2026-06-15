@@ -81,6 +81,7 @@ export const api = {
   // billing
   billingSummary: () => req("/billing/summary"),
   billingLedger: () => req("/billing/ledger"),
+  billingOverview: () => req("/billing/overview"),
   checkout: (planId) => req(`/billing/checkout?plan_id=${encodeURIComponent(planId)}`, { method: "POST" }),
   billingPortal: () => req("/billing/portal", { method: "POST" }),
 

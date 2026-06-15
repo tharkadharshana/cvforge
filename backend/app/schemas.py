@@ -160,6 +160,11 @@ class LedgerRow(BaseModel):
     created_at: str
 
 
+class BillingOverview(BaseModel):
+    summary: BillingSummary
+    ledger: list[LedgerRow] = []
+
+
 class CheckoutOut(BaseModel):
     checkout_url: str
 
