@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useCVStatus } from "../lib/cvstatus";
+import { useCredits } from "../lib/credits";
 import { Banner, Spinner } from "../components/ui";
 
 const splitComma = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -15,6 +16,7 @@ const empty = {
 
 export default function BaseCV() {
   const { status, loading: stLoading, refresh } = useCVStatus();
+  const { refresh: refreshCredits } = useCredits();
   const [cv, setCv] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -22,6 +24,7 @@ export default function BaseCV() {
   const [err, setErr] = useState("");
   const [qual, setQual] = useState("");
   const [qbusy, setQbusy] = useState(false);
+  const [paywall, setPaywall] = useState(false);
   const [rev, setRev] = useState(0);
 
   useEffect(() => {
@@ -46,10 +49,15 @@ export default function BaseCV() {
   };
 
   const addQual = async () => {
-    setErr(""); setMsg(""); setQbusy(true);
-    try { const u = await api.addQualification(qual); setCv({ ...empty, ...u }); setRev((r) => r + 1); setQual(""); setMsg("Merged into CV."); }
-    catch (e) { setErr(e.message); }
-    finally { setQbusy(false); }
+    setErr(""); setMsg(""); setPaywall(false); setQbusy(true);
+    try {
+      const u = await api.addQualification(qual);
+      setCv({ ...empty, ...u }); setRev((r) => r + 1); setQual(""); setMsg("Merged into CV.");
+      refreshCredits();
+    } catch (e) {
+      if (e.status === 402) setPaywall(true);
+      else setErr(e.message);
+    } finally { setQbusy(false); }
   };
 
   return (
@@ -153,9 +161,10 @@ export default function BaseCV() {
         <textarea className="field min-h-[80px]" value={qual} onChange={(e) => setQual(e.target.value)}
           placeholder="e.g. Earned AWS SAA cert March 2026; led migration to Kubernetes." />
         <div className="flex justify-end mt-2">
-          <button className="btn-ghost" disabled={qbusy || qual.trim().length < 3} onClick={addQual}>{qbusy ? "Merging…" : "Merge into CV"}</button>
+          <button className="btn-ghost" disabled={qbusy || qual.trim().length < 3} onClick={addQual}>{qbusy ? "Merging…" : "Merge into CV (1 credit)"}</button>
         </div>
         {qbusy && <Spinner label="Merging" />}
+        {paywall && <div className="mt-2 text-[12px]"><Link to="/billing" className="text-accent">Out of credits — top up →</Link></div>}
       </Card>
 
       <div className="flex justify-end pb-6">

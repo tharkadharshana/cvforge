@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from .. import models, schemas, audit
+from .. import models, schemas, audit, billing
 from ..database import get_db
 from ..auth import get_current_user
 from ..schemas import CVData
@@ -25,6 +25,15 @@ def _get_or_create(db: Session, user: models.User) -> models.BaseCV:
         db.refresh(bc)
         return bc
     return user.base_cv
+
+
+def _require_credits(db: Session, user: models.User, action: str):
+    billing.maybe_refill_monthly(db, user)
+    if not billing.has_credits(user):
+        log.warning("%s blocked user=%s: out of credits (%s)", action, user.id, user.credits)
+        audit.record(action, status="blocked", user_id=user.id,
+                     meta={"why": "no_credits", "credits": user.credits or 0})
+        raise HTTPException(status_code=402, detail="Out of credits. Upgrade to keep generating.")
 
 
 def _has_cv(cv: CVData) -> bool:
@@ -56,6 +65,7 @@ def get_base_cv(db: Session = Depends(get_db), user: models.User = Depends(get_c
 def import_raw_cv(payload: RawCVIn, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """Paste current CV text -> parsed into structured base CV."""
     log.info("import_raw_cv user=%s chars=%d", user.id, len(payload.raw_text))
+    _require_credits(db, user, "cv_import")
     try:
         parsed = pipeline.parse_raw_cv(payload.raw_text)
     except Exception as e:
@@ -63,6 +73,7 @@ def import_raw_cv(payload: RawCVIn, db: Session = Depends(get_db), user: models.
     bc = _get_or_create(db, user)
     bc.data = parsed.model_dump()
     db.commit()
+    billing.charge_generation(db, user, ref="cv_import")
     audit.record("cv_import", user_id=user.id, meta={"exp": len(parsed.experience), "edu": len(parsed.education)})
     return parsed
 
@@ -82,6 +93,7 @@ async def import_file(file: UploadFile = File(...), db: Session = Depends(get_db
     except Exception as e:
         log.error("import_file extract error: %s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=f"could not read file: {e}")
+    _require_credits(db, user, "cv_import_file")
     try:
         parsed = pipeline.parse_raw_cv(text)
     except Exception as e:
@@ -89,6 +101,7 @@ async def import_file(file: UploadFile = File(...), db: Session = Depends(get_db
     bc = _get_or_create(db, user)
     bc.data = parsed.model_dump()
     db.commit()
+    billing.charge_generation(db, user, ref="cv_import_file")
     audit.record("cv_import_file", user_id=user.id, meta={"exp": len(parsed.experience), "edu": len(parsed.education)})
     return parsed
 
@@ -98,6 +111,7 @@ def build_cv(payload: schemas.BuildIn, db: Session = Depends(get_db),
              user: models.User = Depends(get_current_user)):
     """Build a polished base CV from questionnaire answers."""
     log.info("build_cv user=%s fields=%d", user.id, len(payload.answers))
+    _require_credits(db, user, "cv_build")
     try:
         built = pipeline.build_from_answers(payload.answers)
     except Exception as e:
@@ -105,6 +119,7 @@ def build_cv(payload: schemas.BuildIn, db: Session = Depends(get_db),
     bc = _get_or_create(db, user)
     bc.data = built.model_dump()
     db.commit()
+    billing.charge_generation(db, user, ref="cv_build")
     audit.record("cv_build", user_id=user.id, meta={"exp": len(built.experience)})
     return built
 
@@ -125,6 +140,7 @@ def add_qualification(payload: schemas.AddQualificationIn, db: Session = Depends
                       user: models.User = Depends(get_current_user)):
     """Dump new qualification/experience as text -> merged into base CV."""
     log.info("add_qualification user=%s chars=%d", user.id, len(payload.text))
+    _require_credits(db, user, "cv_qualification")
     bc = _get_or_create(db, user)
     current = CVData.model_validate(bc.data)
     try:
@@ -133,5 +149,6 @@ def add_qualification(payload: schemas.AddQualificationIn, db: Session = Depends
         raise HTTPException(status_code=502, detail=f"Merge failed: {e}")
     bc.data = updated.model_dump()
     db.commit()
+    billing.charge_generation(db, user, ref="cv_qualification")
     audit.record("cv_qualification", user_id=user.id)
     return updated

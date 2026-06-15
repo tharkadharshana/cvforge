@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { useCVStatus } from "../lib/cvstatus";
+import { useCredits } from "../lib/credits";
 import { Banner, Spinner } from "./ui";
 
 const blankExp = { title: "", company: "", dates: "", did: "" };
@@ -11,6 +12,7 @@ const blankProj = { name: "", tech: "", did: "" };
 export default function Questionnaire({ onBack }) {
   const nav = useNavigate();
   const { refresh } = useCVStatus();
+  const { refresh: refreshCredits } = useCredits();
   const [c, setC] = useState({ full_name: "", email: "", phone: "", location: "", linkedin: "", github: "", website: "" });
   const [about, setAbout] = useState("");
   const [target, setTarget] = useState("");
@@ -22,9 +24,10 @@ export default function Questionnaire({ onBack }) {
   const [langs, setLangs] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [paywall, setPaywall] = useState(false);
 
   const submit = async () => {
-    setErr("");
+    setErr(""); setPaywall(false);
     if (!c.full_name.trim()) { setErr("Your name is required."); return; }
     setBusy(true);
     const answers = {
@@ -38,8 +41,11 @@ export default function Questionnaire({ onBack }) {
       certifications: certs,
       languages: langs,
     };
-    try { await api.buildCV(answers); await refresh(); nav("/cv"); }
-    catch (e) { setErr(e.message); }
+    try { await api.buildCV(answers); await refresh(); refreshCredits(); nav("/cv"); }
+    catch (e) {
+      if (e.status === 402) setPaywall(true);
+      else setErr(e.message);
+    }
     finally { setBusy(false); }
   };
 
@@ -121,10 +127,11 @@ export default function Questionnaire({ onBack }) {
         <div className="mt-2"><I v={langs} set={setLangs} ph="Languages (comma separated)" /></div>
       </Q>
 
+      {paywall && <div className="text-[12px]"><Link to="/billing" className="text-accent">Out of credits — top up →</Link></div>}
       {err && <Banner>{err}</Banner>}
       <div className="flex justify-end">
         <button className="btn-primary" disabled={busy} onClick={submit}>
-          {busy ? "Building your CV…" : "Build my CV"}
+          {busy ? "Building your CV…" : "Build my CV (1 credit)"}
         </button>
       </div>
       {busy && <Spinner label="LLM polishing your answers into a CV" />}

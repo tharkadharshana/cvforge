@@ -1,7 +1,8 @@
 import { useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { useCVStatus } from "../lib/cvstatus";
+import { useCredits } from "../lib/credits";
 import { Banner, Spinner } from "../components/ui";
 import Questionnaire from "../components/Questionnaire";
 
@@ -43,16 +44,21 @@ function Choice({ title, desc, tag, onClick }) {
 function ImportPanel({ onBack }) {
   const nav = useNavigate();
   const { refresh } = useCVStatus();
+  const { refresh: refreshCredits } = useCredits();
   const fileRef = useRef();
   const [raw, setRaw] = useState("");
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
+  const [paywall, setPaywall] = useState(false);
   const [fileName, setFileName] = useState("");
 
   const done = async (fn, label) => {
-    setErr(""); setBusy(label);
-    try { await fn(); await refresh(); nav("/cv"); }
-    catch (e) { setErr(e.message); }
+    setErr(""); setPaywall(false); setBusy(label);
+    try { await fn(); await refresh(); refreshCredits(); nav("/cv"); }
+    catch (e) {
+      if (e.status === 402) setPaywall(true);
+      else setErr(e.message);
+    }
     finally { setBusy(""); }
   };
 
@@ -78,7 +84,7 @@ function ImportPanel({ onBack }) {
         <div className="font-mono text-sm text-muted">
           {fileName ? `Selected: ${fileName}` : "Click or drop a .pdf / .docx / .txt file"}
         </div>
-        <div className="font-mono text-[11px] text-muted/60 mt-1">Legacy .doc not supported — save as .docx</div>
+        <div className="font-mono text-[11px] text-muted/60 mt-1">Legacy .doc not supported — save as .docx · 1 credit</div>
       </div>
 
       <div className="label my-4 text-center">— or paste text —</div>
@@ -87,11 +93,12 @@ function ImportPanel({ onBack }) {
       <div className="flex justify-end mt-3">
         <button className="btn-primary" disabled={!!busy || raw.trim().length < 20}
           onClick={() => done(() => api.importCV(raw), "paste")}>
-          {busy === "paste" ? "Parsing…" : "Parse pasted text"}
+          {busy === "paste" ? "Parsing…" : "Parse pasted text (1 credit)"}
         </button>
       </div>
 
       {busy && <div className="mt-4"><Spinner label={busy === "file" ? "Extracting + parsing file" : "Parsing CV"} /></div>}
+      {paywall && <div className="mt-4 text-[12px]"><Link to="/billing" className="text-accent">Out of credits — top up →</Link></div>}
       {err && <div className="mt-4"><Banner>{err}</Banner></div>}
     </div>
   );
