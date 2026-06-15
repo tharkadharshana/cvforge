@@ -56,6 +56,14 @@ common fonts. The tailoring prompt mirrors JD keywords and forbids fabrication.
 ## Deploy notes (Vercel + Supabase)
 - Deploy this `backend/` directory as its own Vercel project (Root Directory = `backend`).
   `api/index.py` exports the FastAPI `app`; `vercel.json` rewrites all paths to it.
+- `vercel.json` sets `"framework": null` to opt out of Vercel's newer FastAPI
+  framework preset (which bundles the whole app into one auto-detected Function and
+  ignores the `functions`/`rewrites` keys below, causing a build error like
+  `The pattern "api/index.py" defined in functions doesn't match any Serverless
+  Functions inside the api directory`). With `framework: null`, Vercel uses the
+  classic per-file Python builder, so `api/index.py` becomes its own Serverless
+  Function and `functions["api/index.py"].maxDuration` is honored. If the project's
+  dashboard "Framework Preset" is set to "FastAPI", change it to "Other" too.
 - `DATABASE_URL` must be the Supabase **transaction-mode pooler** URI on **port 6543**
   (`...pooler.supabase.com:6543`), not the direct 5432 connection — serverless +
   an in-app pool on top of a direct connection exhausts Postgres connections fast.
