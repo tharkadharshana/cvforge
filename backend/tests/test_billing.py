@@ -25,7 +25,7 @@ def test_generate_blocked_when_out_of_credits(client):
     uid = users[0]["id"]
     client.post(f"/admin/users/{uid}/credits", headers=admin, json={"delta": -2, "reason": "test_drain"})
     # now generation must be blocked with 402 (before any LLM call)
-    r = client.post("/generate", headers=H,
+    r = client.post("/generate/start", headers=H,
                     json={"job_description": "Backend engineer FastAPI MySQL SaaS role needed here now."})
     assert r.status_code == 402
 

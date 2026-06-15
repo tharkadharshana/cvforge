@@ -47,7 +47,7 @@ export default function Landing() {
       {/* hero */}
       <section className="max-w-6xl mx-auto px-5 pt-16 pb-20 grid lg:grid-cols-[1.05fr_0.95fr] gap-12 items-center">
         <div>
-          <div className="label text-accent mb-5 rise">ATS-tuned · DeepSeek + Gemini</div>
+          <div className="label text-accent mb-5 rise">ATS-tuned · AI-powered</div>
           <h1 className="font-display font-extrabold leading-[1.02] text-[clamp(2.4rem,6vw,4.2rem)] rise" style={{ animationDelay: ".05s" }}>
             A tailored CV for<br />every job — forged<br />from <span className="text-accent">one</span> master profile.
           </h1>
@@ -146,7 +146,7 @@ export default function Landing() {
       <footer className="border-t border-line">
         <div className="max-w-6xl mx-auto px-5 py-6 flex flex-col sm:flex-row justify-between gap-3 label">
           <span>CVForge — tailored CVs, forged per job.</span>
-          <span className="text-line2">Built with FastAPI · React · DeepSeek + Gemini</span>
+          <span className="text-line2">Built with FastAPI · React · AI-powered</span>
         </div>
       </footer>
     </div>

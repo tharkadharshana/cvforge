@@ -84,6 +84,46 @@ def cover_letter(tailored_cv: dict, job_description: str, company: str, job_titl
     return system, user
 
 
+def improve_cv(base_cv: dict, job_description: str, previous_cv: dict, critique: dict) -> tuple[str, str]:
+    system = (
+        "You are an expert resume writer revising an ATS-tailored CV based on a critic's feedback. "
+        "Address the missing keywords and suggestions where the candidate genuinely has the underlying "
+        "skill or experience in their master CV — work it into relevant bullets/skills naturally. "
+        "Keep everything that already works. " + NO_FABRICATION + " Output JSON only."
+    )
+    user = (
+        f"{CV_SCHEMA_HINT}\n\nCandidate master CV JSON (source of truth, never go beyond this):\n"
+        f"{json.dumps(base_cv, ensure_ascii=False)}\n\n"
+        f"Previous tailored CV JSON:\n{json.dumps(previous_cv, ensure_ascii=False)}\n\n"
+        f"Target job description:\n\"\"\"\n{job_description}\"\"\"\n\n"
+        "Critic feedback to address:\n"
+        f"Missing keywords: {json.dumps(critique.get('missing_keywords', []), ensure_ascii=False)}\n"
+        f"Suggestions: {json.dumps(critique.get('suggestions', []), ensure_ascii=False)}\n\n"
+        "Produce an improved tailored CV JSON."
+    )
+    return system, user
+
+
+def improve_cover_letter(tailored_cv: dict, previous_letter: str, job_description: str,
+                          company: str, job_title: str, critique: dict) -> tuple[str, str]:
+    system = (
+        "You revise a cover letter based on critic feedback, keeping it genuinely human-written: natural, "
+        "specific, confident but not boastful, no clichés ('I am writing to express my interest', "
+        "'team player', 'fast-paced environment'), no em-dash overuse, varied sentence length. "
+        "3-4 short paragraphs. " + NO_FABRICATION + " Output plain text only, no markdown."
+    )
+    user = (
+        f"Candidate (tailored) CV JSON:\n{json.dumps(tailored_cv, ensure_ascii=False)}\n\n"
+        f"Company: {company or 'the company'}\nRole: {job_title or 'the role'}\n\n"
+        f"Job description:\n\"\"\"\n{job_description}\"\"\"\n\n"
+        f"Previous cover letter:\n\"\"\"\n{previous_letter}\"\"\"\n\n"
+        "Tone notes to address: " + json.dumps(critique.get("human_tone_notes", []), ensure_ascii=False) + "\n"
+        "Suggestions to address: " + json.dumps(critique.get("suggestions", []), ensure_ascii=False) + "\n\n"
+        "Write the improved cover letter."
+    )
+    return system, user
+
+
 def critique(tailored_cv: dict, cover_letter_text: str, job_description: str) -> tuple[str, str]:
     system = (
         "You are a strict ATS auditor and hiring reviewer. Score the tailored CV against the job description. "

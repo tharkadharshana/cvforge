@@ -69,9 +69,14 @@ export const api = {
     return res.json();
   },
 
-  generate: (payload) => req("/generate", { method: "POST", body: payload }),
+  startGeneration: (payload) => req("/generate/start", { method: "POST", body: payload }),
+  tailor: (jobId) => req(`/generate/${jobId}/tailor`, { method: "POST" }),
+  cover: (jobId) => req(`/generate/${jobId}/cover`, { method: "POST" }),
+  critique: (jobId) => req(`/generate/${jobId}/critique`, { method: "POST" }),
+  getJob: (jobId) => req(`/generate/${jobId}`),
   listApplications: () => req("/applications"),
   getApplication: (id) => req(`/applications/${id}`),
+  improveApplication: (id) => req(`/applications/${id}/improve`, { method: "POST" }),
 
   // billing
   billingSummary: () => req("/billing/summary"),

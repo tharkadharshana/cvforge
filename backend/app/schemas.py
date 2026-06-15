@@ -140,6 +140,7 @@ class PlanOut(BaseModel):
     available: bool = False          # true when a Polar product is configured
     price_per_credit: float = 0.0
     margin_pct: float = 0.0
+    min_ats_score: int = 0           # guaranteed minimum ATS score (0 = no guarantee)
 
 
 class BillingSummary(BaseModel):
@@ -185,6 +186,9 @@ class CritiqueOut(BaseModel):
     missing_keywords: list[str] = []
     human_tone_notes: list[str] = []
     suggestions: list[str] = []
+    target_ats_score: int = 0
+    meets_ats_guarantee: bool = True
+    ats_iterations: int = 1
 
 
 class GenerateOut(BaseModel):
@@ -192,3 +196,41 @@ class GenerateOut(BaseModel):
     tailored_cv: CVData
     cover_letter: str
     critique: CritiqueOut
+
+
+# ---------- generation jobs (per-step pipeline) ----------
+class GenerateStartOut(BaseModel):
+    job_id: int
+    status: str
+
+
+class GenerateTailorOut(BaseModel):
+    job_id: int
+    status: str
+    tailored_cv: CVData
+
+
+class GenerateCoverOut(BaseModel):
+    job_id: int
+    status: str
+    cover_letter: str
+
+
+class GenerateCritiqueOut(BaseModel):
+    job_id: int
+    status: str
+    application_id: int
+    critique: CritiqueOut
+    ats_score: int
+
+
+class GenerateJobOut(BaseModel):
+    job_id: int
+    status: str
+    job_title: str = ""
+    company: str = ""
+    tailored_cv: Optional[CVData] = None
+    cover_letter: Optional[str] = None
+    critique: Optional[CritiqueOut] = None
+    ats_score: Optional[int] = None
+    error: Optional[str] = None

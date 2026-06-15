@@ -37,7 +37,11 @@ class BaseCV(Base):
 
 
 class Application(Base):
-    """One generated CV + cover letter for one job description."""
+    """One generated CV + cover letter for one job description.
+
+    Also doubles as the generation job record: a row is created (status=pending)
+    as soon as /generate/start validates the request, then filled in
+    progressively by the per-step endpoints (tailor -> cover -> critique)."""
     __tablename__ = "applications"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -45,10 +49,13 @@ class Application(Base):
     job_title: Mapped[str] = mapped_column(String(255), default="")
     company: Mapped[str] = mapped_column(String(255), default="")
     job_description: Mapped[str] = mapped_column(Text)
-    tailored_cv: Mapped[dict] = mapped_column(JSON)        # tailored CVData
-    cover_letter: Mapped[str] = mapped_column(Text)
-    ats_score: Mapped[int] = mapped_column(Integer, default=0)
-    critique: Mapped[dict] = mapped_column(JSON, default=dict)
+    tailored_cv: Mapped[dict | None] = mapped_column(JSON, nullable=True)        # tailored CVData
+    cover_letter: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ats_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    critique: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending|tailored|covered|done|failed
+    charged: Mapped[bool] = mapped_column(default=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="applications")

@@ -18,6 +18,7 @@ class Plan:
     credits: int
     polar_product_id: str = ""
     recurring: bool = False
+    min_ats_score: int = 0  # guaranteed minimum ATS score for this plan (0 = no guarantee)
 
     @property
     def price_per_credit(self) -> float:
@@ -48,6 +49,14 @@ def get_plan(plan_id: str) -> Plan | None:
 
 def get_plan_by_product(product_id: str) -> Plan | None:
     return next((p for p in get_plans() if p.polar_product_id and p.polar_product_id == product_id), None)
+
+
+def min_ats_score_for(user: models.User) -> int:
+    """Guaranteed minimum ATS score for this user's plan, 0 = no guarantee."""
+    plan = get_plan(user.plan)
+    if plan is not None:
+        return plan.min_ats_score
+    return settings.default_min_ats_score
 
 
 # ---------- credit operations ----------

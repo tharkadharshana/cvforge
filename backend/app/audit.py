@@ -11,7 +11,8 @@ log = get_logger("audit")
 EVENTS = {
     "register", "login", "login_failed",
     "cv_import", "cv_import_file", "cv_build", "cv_qualification", "cv_edit",
-    "generate", "checkout_started", "portal_opened",
+    "generate_start", "generate_tailor", "generate_cover", "generate_done",
+    "generate_failed", "generate_improve", "checkout_started", "portal_opened",
     "webhook_received", "purchase", "subscription_canceled",
     "admin_credit_adjust",
 }

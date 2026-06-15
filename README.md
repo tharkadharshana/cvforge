@@ -7,14 +7,22 @@ job-tailored CV + human-sounding cover letter as DOCX and PDF. Uses DeepSeek + G
 FastAPI + SQLAlchemy + JWT auth. SQLite default, MySQL via `DATABASE_URL`.
 Renderers pure-python (`python-docx`, `fpdf2`) — no system libs, cloud-friendly.
 
-## Run
+## Run (backend + frontend)
+
+First-time setup:
+
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env        # fill SECRET_KEY + provider keys
-uvicorn app.main:app --reload
+cd backend && pip install -r requirements.txt && cp .env.example .env  # fill SECRET_KEY + provider keys
+cd ../frontend && npm install
 ```
-Docs at http://localhost:8000/docs
+
+Then, from the project root, start both with one command (opens two windows):
+
+```powershell
+Start-Process powershell -ArgumentList '-NoExit','-Command','cd backend; uvicorn app.main:app --reload' ; Start-Process powershell -ArgumentList '-NoExit','-Command','cd frontend; npm run dev'
+```
+
+Backend docs at <http://localhost:8000/docs>, frontend at the URL Vite prints (usually <http://localhost:5173>).
 
 ## LLM roles (env)
 - `DRAFTER_PROVIDER` writes tailored CV + cover letter.
