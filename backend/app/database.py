@@ -12,7 +12,15 @@ else:
     # pooler already manages connection pooling, so an additional in-app pool
     # would exhaust connections under serverless concurrency. NullPool opens
     # one connection per request and closes it when the session is done.
-    engine = create_engine(settings.database_url, poolclass=NullPool, pool_pre_ping=True)
+    # prepare_threshold=None disables psycopg's server-side prepared statements -
+    # required in transaction-pooling mode, where a "connection" can be backed by
+    # a different Postgres server process per transaction, so a prepared
+    # statement from one transaction may not exist (or may collide by name) in
+    # the next.
+    engine = create_engine(
+        settings.database_url, poolclass=NullPool, pool_pre_ping=True,
+        connect_args={"prepare_threshold": None},
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

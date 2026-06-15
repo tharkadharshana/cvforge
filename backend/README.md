@@ -59,13 +59,30 @@ common fonts. The tailoring prompt mirrors JD keywords and forbids fabrication.
 - `DATABASE_URL` must be the Supabase **transaction-mode pooler** URI on **port 6543**
   (`...pooler.supabase.com:6543`), not the direct 5432 connection — serverless +
   an in-app pool on top of a direct connection exhausts Postgres connections fast.
-  `database.py` uses `NullPool` for Postgres for this reason.
+  `database.py` uses `NullPool` for Postgres for this reason, and passes
+  `connect_args={"prepare_threshold": None}` to disable psycopg's server-side
+  prepared statements (transaction pooling can route each transaction to a
+  different backend Postgres process, so a prepared statement from one
+  transaction may not exist - or collide by name - in the next).
 - Set a strong `SECRET_KEY`.
 - `GENERATION_TIER=fast` (default) keeps every LLM call comfortably under 60s,
   since `/generate/*` now does exactly one LLM call per request. Do not set
   `GENERATION_TIER=quality` on Vercel Hobby.
 - Set `APP_URL` to the frontend's Vercel domain (tightens CORS + sets the Polar return URL).
 - For SaaS billing/usage metering + per-user rate limits: add next iteration.
+
+### Setting up Supabase + populating `DATABASE_URL`
+
+1. In the Vercel dashboard, add the **Supabase** integration to the backend project (Storage tab → Browse Marketplace → Supabase). Pick a region, accept the defaults for "Public Environment Variables Prefix" and "Custom Prefix" (the frontend never talks to Supabase directly, so these don't matter), and enable the **Production** and **Development** environments.
+2. This creates a Supabase project and injects several env vars (`POSTGRES_URL`, `POSTGRES_URL_NON_POOLING`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, etc.) into the Vercel project. **None of these are used as-is** - this app only needs one connection string, in its own format.
+3. Build `DATABASE_URL` from the injected `POSTGRES_URL` (the **pooler**, port **6543** one - not `POSTGRES_URL_NON_POOLING`, which is the direct 5432 connection):
+   - Change the scheme from `postgres://` to `postgresql+psycopg://`.
+   - Drop any non-standard query params (e.g. `&supa=base-pooler.x`), keep `sslmode=require`.
+   - Example: `POSTGRES_URL="postgres://postgres.<ref>:<password>@<region>.pooler.supabase.com:6543/postgres?sslmode=require&supa=base-pooler.x"` becomes
+     `DATABASE_URL=postgresql+psycopg://postgres.<ref>:<password>@<region>.pooler.supabase.com:6543/postgres?sslmode=require`
+4. Set that as `DATABASE_URL` in the backend's env vars (Vercel project settings, and/or local `.env` for testing against the real DB).
+5. On first request, `Base.metadata.create_all()` (in `app/main.py`) creates all tables automatically - no migrations to run.
+6. To test locally against Supabase: `pip install "psycopg[binary]==3.2.4"` (already in `requirements.txt`), set `DATABASE_URL` in `.env` to the string from step 3, then `uvicorn app.main:app --reload`. Switch `DATABASE_URL` back to `sqlite:///./cvforge.db` for normal local dev/tests - `conftest.py` resets (drops + recreates) all tables before every test, which you do **not** want pointed at a real Supabase database with data in it.
 
 ## TODO (next iterations)
 - React frontend.
