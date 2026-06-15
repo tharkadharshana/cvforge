@@ -14,7 +14,11 @@ class GeminiProvider(LLMProvider):
             if not settings.gemini_api_key:
                 raise RuntimeError("GEMINI_API_KEY not set")
             from google import genai
-            self._client = genai.Client(api_key=settings.gemini_api_key)
+            from google.genai import types
+            self._client = genai.Client(
+                api_key=settings.gemini_api_key,
+                http_options=types.HttpOptions(timeout=int(settings.llm_timeout_s * 1000)),
+            )
         return self._client
 
     def _call(self, system: str, user: str, json_mode: bool, pro: bool) -> tuple[str, dict]:
@@ -24,6 +28,7 @@ class GeminiProvider(LLMProvider):
         cfg = types.GenerateContentConfig(
             system_instruction=system,
             temperature=0.4,
+            max_output_tokens=settings.llm_max_tokens,
             response_mime_type="application/json" if json_mode else "text/plain",
         )
         resp = client.models.generate_content(model=model, contents=user, config=cfg)

@@ -18,11 +18,11 @@ class DeepSeekProvider(LLMProvider):
                 {"role": "user", "content": user},
             ],
             "temperature": 0.4,
-            "max_tokens": 8000,
+            "max_tokens": settings.llm_max_tokens,
         }
         if json_mode:
             body["response_format"] = {"type": "json_object"}
-        with httpx.Client(timeout=180.0) as client:
+        with httpx.Client(timeout=settings.llm_timeout_s) as client:
             r = client.post(
                 f"{settings.deepseek_base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {settings.deepseek_api_key}"},

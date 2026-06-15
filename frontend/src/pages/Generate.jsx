@@ -7,6 +7,35 @@ import { Banner, Spinner, ScoreGauge } from "../components/ui";
 import CVView from "../components/CVView";
 import { DownloadBar, CritiquePanel, ImproveButton } from "./ApplicationDetail";
 
+const STEPS = [
+  { key: "tailor", label: "Tailoring CV", call: (id) => api.tailor(id) },
+  { key: "cover", label: "Writing cover letter", call: (id) => api.cover(id) },
+  { key: "critique", label: "Scoring ATS", call: (id) => api.critique(id) },
+];
+
+function Stepper({ jobStatus, steps, onRetry, busy }) {
+  return (
+    <div className="flex flex-col gap-2">
+      {steps.map((s) => {
+        const st = jobStatus[s.key] || "idle";
+        const icon = st === "done" ? "✓" : st === "running" ? "⟳" : st === "error" ? "✗" : "▢";
+        const tone = st === "done" ? "text-good" : st === "error" ? "text-bad" : st === "running" ? "text-accent" : "text-muted";
+        return (
+          <div key={s.key} className="flex items-center gap-2 font-mono text-[13px]">
+            <span className={tone}>{icon}</span>
+            <span className={tone}>{s.label}</span>
+            {st === "error" && (
+              <button className="btn-ghost text-[11px] px-2 py-1" disabled={busy} onClick={() => onRetry(s.key)}>
+                Retry this step
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Generate() {
   const nav = useNavigate();
   const { status, loading: stLoading } = useCVStatus();
@@ -20,7 +49,13 @@ export default function Generate() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [paywall, setPaywall] = useState(false);
-  const [result, setResult] = useState(null);
+
+  const [jobId, setJobId] = useState(null);
+  const [stepStatus, setStepStatus] = useState({});
+  const [stepError, setStepError] = useState({});
+  const [tailoredCv, setTailoredCv] = useState(null);
+  const [coverLetter, setCoverLetter] = useState(null);
+  const [critique, setCritique] = useState(null);
 
   if (!stLoading && status && !status.has_base_cv) return <Navigate to="/onboarding" replace />;
 
@@ -34,17 +69,56 @@ export default function Generate() {
     finally { setFetching(false); }
   };
 
+  const runFrom = async (id, fromIndex) => {
+    for (let i = fromIndex; i < STEPS.length; i++) {
+      const step = STEPS[i];
+      setStepStatus((s) => ({ ...s, [step.key]: "running" }));
+      setStepError((e) => ({ ...e, [step.key]: "" }));
+      try {
+        const r = await step.call(id);
+        if (step.key === "tailor") setTailoredCv(r.tailored_cv);
+        if (step.key === "cover") setCoverLetter(r.cover_letter);
+        if (step.key === "critique") setCritique(r.critique);
+        setStepStatus((s) => ({ ...s, [step.key]: "done" }));
+      } catch (e) {
+        setStepStatus((s) => ({ ...s, [step.key]: "error" }));
+        setStepError((er) => ({ ...er, [step.key]: e.message }));
+        setBusy(false);
+        return;
+      }
+    }
+    setBusy(false);
+    refreshCredits();
+  };
+
   const run = async () => {
-    setErr(""); setPaywall(false); setResult(null); setBusy(true);
+    setErr(""); setPaywall(false); setBusy(true);
+    setJobId(null); setTailoredCv(null); setCoverLetter(null); setCritique(null);
+    setStepStatus({}); setStepError({});
+    let id;
     try {
-      const r = await api.generate({ job_description: jd, company, job_title: title });
-      setResult(r);
-      refreshCredits();
+      const r = await api.startGeneration({ job_description: jd, company, job_title: title });
+      id = r.job_id;
+      setJobId(id);
     } catch (e) {
+      setBusy(false);
       if (e.status === 402) setPaywall(true);
       else setErr(e.message);
-    } finally { setBusy(false); }
+      return;
+    }
+    await runFrom(id, 0);
   };
+
+  const retryStep = async (key) => {
+    if (!jobId) return;
+    setBusy(true);
+    const idx = STEPS.findIndex((s) => s.key === key);
+    await runFrom(jobId, idx);
+  };
+
+  const result = critique && jobId
+    ? { application_id: jobId, tailored_cv: tailoredCv, cover_letter: coverLetter, critique }
+    : null;
 
   return (
     <div className="rise">
@@ -76,11 +150,20 @@ export default function Generate() {
         placeholder="Paste the full job description here…" />
 
       <div className="flex items-center justify-between mt-4 gap-3 flex-wrap">
-        <div>{busy && <Spinner label="Tailoring CV · writing letter · scoring ATS" />}</div>
+        <div>{busy && !jobId && <Spinner label="Starting" />}</div>
         <button className="btn-primary" disabled={busy || jd.trim().length < 20} onClick={run}>
           {busy ? "Forging…" : "Forge CV + cover letter (1 credit)"}
         </button>
       </div>
+
+      {jobId && (
+        <div className="mt-5 panel p-5">
+          <Stepper jobStatus={stepStatus} steps={STEPS} onRetry={retryStep} busy={busy} />
+          {Object.values(stepError).some(Boolean) && (
+            <div className="mt-3"><Banner>{Object.values(stepError).find(Boolean)}</Banner></div>
+          )}
+        </div>
+      )}
 
       {paywall && (
         <div className="mt-5 panel p-6 text-center border-accent/40">
@@ -91,27 +174,35 @@ export default function Generate() {
       )}
       {err && <div className="mt-4"><Banner>{err}</Banner></div>}
 
-      {result && (
+      {tailoredCv && (
         <div className="mt-8 space-y-6 rise">
-          <div className="flex items-center justify-between gap-4 panel p-5 flex-wrap">
-            <ScoreGauge score={result.critique?.ats_score || 0} />
-            <div className="flex items-center gap-2 flex-wrap justify-end">
-              <ImproveButton applicationId={result.application_id} onImproved={(r) => setResult({ ...result, ...r })} />
-              <DownloadBar id={result.application_id} />
+          {critique && (
+            <div className="flex items-center justify-between gap-4 panel p-5 flex-wrap">
+              <ScoreGauge score={critique?.ats_score || 0} />
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <ImproveButton applicationId={jobId} onImproved={(r) => {
+                  setTailoredCv(r.tailored_cv); setCoverLetter(r.cover_letter); setCritique(r.critique);
+                }} />
+                <DownloadBar id={jobId} />
+              </div>
             </div>
-          </div>
-          <CritiquePanel critique={result.critique} />
+          )}
+          {critique && <CritiquePanel critique={critique} />}
           <div>
             <h2 className="label mb-2">Tailored CV</h2>
-            <div className="panel p-7"><CVView cv={result.tailored_cv} /></div>
+            <div className="panel p-7"><CVView cv={tailoredCv} /></div>
           </div>
-          <div>
-            <h2 className="label mb-2">Cover letter</h2>
-            <div className="panel p-7 font-read text-[15px] leading-relaxed whitespace-pre-wrap">{result.cover_letter}</div>
-          </div>
-          <button className="btn-ghost" onClick={() => nav(`/applications/${result.application_id}`)}>
-            Open in history →
-          </button>
+          {coverLetter && (
+            <div>
+              <h2 className="label mb-2">Cover letter</h2>
+              <div className="panel p-7 font-read text-[15px] leading-relaxed whitespace-pre-wrap">{coverLetter}</div>
+            </div>
+          )}
+          {result && (
+            <button className="btn-ghost" onClick={() => nav(`/applications/${jobId}`)}>
+              Open in history →
+            </button>
+          )}
         </div>
       )}
     </div>

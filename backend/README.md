@@ -4,7 +4,9 @@ Multi-user SaaS. Stores one structured base CV per user. Generates ATS-friendly,
 job-tailored CV + human-sounding cover letter as DOCX and PDF. Uses DeepSeek + Gemini.
 
 ## Stack
-FastAPI + SQLAlchemy + JWT auth. SQLite default, MySQL via `DATABASE_URL`.
+FastAPI + SQLAlchemy + JWT auth. SQLite for local dev/tests, Supabase Postgres
+(via Supavisor pooler) in production via `DATABASE_URL`. Stateless backend —
+no local disk, runs as a Vercel serverless function.
 Renderers pure-python (`python-docx`, `fpdf2`) — no system libs, cloud-friendly.
 
 ## Run
@@ -32,8 +34,13 @@ Docs at http://localhost:8000/docs
 4. `PUT /cv` — full structured edit (the editor saves here).
 5. `POST /cv/qualification` {text} — dump a new qualification anytime, merged in.
 6. `GET /cv` — current base CV.
-7. `POST /generate` {job_description, company, job_title} -> tailored CV + cover letter + ATS critique (blocked until base CV exists).
-8. `GET /applications`, `GET /applications/{id}`, `GET /applications/{id}/download?doc=cv|cover&fmt=pdf|docx`.
+7. Generation is a 4-step job, each step one HTTP request (so each stays well under any serverless time limit):
+   - `POST /generate/start` {job_description, company, job_title} -> `{job_id, status}` (blocked until base CV exists / out of credits).
+   - `POST /generate/{job_id}/tailor` -> tailored CV.
+   - `POST /generate/{job_id}/cover` -> cover letter.
+   - `POST /generate/{job_id}/critique` -> ATS critique + score; charges 1 credit on first success.
+   - `GET /generate/{job_id}` -> current job state (for resume/poll/refresh).
+8. `GET /applications` (completed jobs only), `GET /applications/{id}`, `GET /applications/{id}/download?doc=cv|cover&fmt=pdf|docx`.
 
 ## Logging / dev visibility
 Every request gets a short `req=` id threaded through all logs:
@@ -46,10 +53,18 @@ Tail backend stdout to see exactly where a slow CV parse / generation is sitting
 Single column, standard headings, real selectable text, no tables/graphics/text-boxes,
 common fonts. The tailoring prompt mirrors JD keywords and forbids fabrication.
 
-## Deploy notes (cloud)
-- Set `DATABASE_URL` to managed MySQL. Set a strong `SECRET_KEY`.
-- Tighten CORS `allow_origins` to the frontend domain.
-- Containerise: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+## Deploy notes (Vercel + Supabase)
+- Deploy this `backend/` directory as its own Vercel project (Root Directory = `backend`).
+  `api/index.py` exports the FastAPI `app`; `vercel.json` rewrites all paths to it.
+- `DATABASE_URL` must be the Supabase **transaction-mode pooler** URI on **port 6543**
+  (`...pooler.supabase.com:6543`), not the direct 5432 connection — serverless +
+  an in-app pool on top of a direct connection exhausts Postgres connections fast.
+  `database.py` uses `NullPool` for Postgres for this reason.
+- Set a strong `SECRET_KEY`.
+- `GENERATION_TIER=fast` (default) keeps every LLM call comfortably under 60s,
+  since `/generate/*` now does exactly one LLM call per request. Do not set
+  `GENERATION_TIER=quality` on Vercel Hobby.
+- Set `APP_URL` to the frontend's Vercel domain (tightens CORS + sets the Polar return URL).
 - For SaaS billing/usage metering + per-user rate limits: add next iteration.
 
 ## TODO (next iterations)
@@ -63,7 +78,7 @@ common fonts. The tailoring prompt mirrors JD keywords and forbids fabrication.
 Credits gate CV generation (`CREDITS_PER_GENERATION` each). All knobs live in `.env`:
 - `FREE_TIER_MODE=trial` grants `FREE_TRIAL_CREDITS` once on signup. `forever_free` refills `FREE_MONTHLY_CREDITS` every 30 days.
 - Plans come from `BILLING_PLANS_JSON` (id, name, price_usd, credits, checkout_url). Edit price/credits to set your margin; `COST_PER_GENERATION_USD` is your cost, used to compute the margin shown in `/billing/summary` (server-side only, never shown to users).
-- `/generate` blocks with **402** when credits run out; a credit is charged only after a successful generation. Failed generations are not charged.
+- `/generate/start` blocks with **402** when credits run out; a credit is charged exactly once, at the final `/generate/{job_id}/critique` step on first success (idempotent on retry). Failed or abandoned jobs are not charged.
 - Endpoints: `GET /billing/summary`, `GET /billing/ledger`, `POST /billing/checkout?plan_id=`, `POST /billing/webhook`.
 
 ### Payments via Polar (Merchant of Record)
@@ -87,12 +102,14 @@ Polar collects the money, handles tax + PCI, and pays out to Sri Lanka. Cards ne
 
 
 ## Job URL fetch
-`POST /jobs/fetch-url {url}` fetches a posting and extracts the text (trafilatura). Works on most job boards/company pages. LinkedIn often needs login / renders via JS, so it may fail there — the user is told to paste the text instead.
+`POST /jobs/fetch-url {url}` fetches a posting and extracts the text with a lightweight HTML-tag-stripping
+extractor (kept dependency-free for Vercel's function size limit). Works on most job boards/company pages.
+LinkedIn often needs login / renders via JS, so it may fail there — the user is told to paste the text instead.
 
 ## Logging, audit & support (investigate any complaint)
 Two layers:
 
-**1. Durable audit trail (`audit_events` table).** Every meaningful action writes one queryable, permanent row: `register`, `login`, `login_failed`, `cv_import`, `cv_import_file`, `cv_build`, `cv_qualification`, `cv_edit`, `generate` (ok / blocked / failed), `checkout_started`, `portal_opened`, `webhook_received` (ok / rejected), `purchase`, `subscription_canceled`, `admin_credit_adjust`. Each row has `user_id`, `request_id`, `event`, `status`, `ip`, non-PII `meta`, and timestamp. Written via an independent DB session, so a failed/rolled-back request still leaves its trail.
+**1. Durable audit trail (`audit_events` table).** Every meaningful action writes one queryable, permanent row: `register`, `login`, `login_failed`, `cv_import`, `cv_import_file`, `cv_build`, `cv_qualification`, `cv_edit`, `generate_start`, `generate_tailor`, `generate_cover`, `generate_done`, `generate_failed`, `generate_improve`, `checkout_started`, `portal_opened`, `webhook_received` (ok / rejected), `purchase`, `subscription_canceled`, `admin_credit_adjust`. Each row has `user_id`, `request_id`, `event`, `status`, `ip`, non-PII `meta`, and timestamp. Written via an independent DB session, so a failed/rolled-back request still leaves its trail.
 
 **2. Operational logs.** Per-request `request_id` threads through extraction → pipeline stage → LLM call (model, latency, tokens) → errors with full traceback → response. Set `LOG_JSON=true` for structured JSON (Better Stack / Axiom / Loki). `LOG_FILE` to also write to disk.
 

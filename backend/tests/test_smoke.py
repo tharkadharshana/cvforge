@@ -20,7 +20,7 @@ def test_cv_status_and_generate_gating(client):
     H = auth_headers(client)
     assert client.get("/cv/status", headers=H).json()["has_base_cv"] is False
     # generate blocked without a base CV
-    assert client.post("/generate", headers=H,
+    assert client.post("/generate/start", headers=H,
                        json={"job_description": "Backend engineer FastAPI MySQL SaaS role needed here."}).status_code == 400
     # set base CV
     cv = {"contact": {"full_name": "Jane", "email": "j@test.com"}, "summary": "x", "skills": {},
@@ -31,7 +31,7 @@ def test_cv_status_and_generate_gating(client):
 
 def test_request_id_in_error_responses(client):
     H = auth_headers(client)
-    r = client.post("/generate", headers=H, json={"job_description": "short"})  # validation error
+    r = client.post("/generate/start", headers=H, json={"job_description": "short"})  # validation error
     assert r.status_code == 422
     assert "request_id" in r.json()
     assert "x-request-id" in {k.lower() for k in r.headers}

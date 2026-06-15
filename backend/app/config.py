@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 10080
     algorithm: str = "HS256"
 
+    # Local/test default is SQLite. In production use the Supabase Postgres
+    # transaction-mode pooler (port 6543), e.g.:
+    # postgresql+psycopg://postgres.<ref>:<password>@<region>.pooler.supabase.com:6543/postgres?sslmode=require
     database_url: str = "sqlite:///./cvforge.db"
 
     deepseek_api_key: str = ""
@@ -21,6 +24,17 @@ class Settings(BaseSettings):
 
     drafter_provider: str = "gemini"
     critic_provider: str = "deepseek"
+
+    # --- generation pipeline limits (Vercel: each request does ONE LLM call,
+    # must stay well under the 60s function limit) ---
+    # "fast": always use the non-pro/flash models (typical 5-25s/call). Required on Vercel Hobby.
+    # "quality": tailor/critique may use pro models (current behavior) - only safe on hosts without a 60s cap.
+    generation_tier: str = "fast"
+    # cap LLM output tokens per call, applied to every provider.
+    llm_max_tokens: int = 4000
+    # per-call HTTP timeout (seconds). Keeps a stuck provider from being killed
+    # by the platform with no useful error.
+    llm_timeout_s: float = 50.0
 
     # if the primary provider above fails (incl. 503/overloaded after retries),
     # retry the same call on this provider instead. empty = no fallback.

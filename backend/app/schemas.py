@@ -196,3 +196,41 @@ class GenerateOut(BaseModel):
     tailored_cv: CVData
     cover_letter: str
     critique: CritiqueOut
+
+
+# ---------- generation jobs (per-step pipeline) ----------
+class GenerateStartOut(BaseModel):
+    job_id: int
+    status: str
+
+
+class GenerateTailorOut(BaseModel):
+    job_id: int
+    status: str
+    tailored_cv: CVData
+
+
+class GenerateCoverOut(BaseModel):
+    job_id: int
+    status: str
+    cover_letter: str
+
+
+class GenerateCritiqueOut(BaseModel):
+    job_id: int
+    status: str
+    application_id: int
+    critique: CritiqueOut
+    ats_score: int
+
+
+class GenerateJobOut(BaseModel):
+    job_id: int
+    status: str
+    job_title: str = ""
+    company: str = ""
+    tailored_cv: Optional[CVData] = None
+    cover_letter: Optional[str] = None
+    critique: Optional[CritiqueOut] = None
+    ats_score: Optional[int] = None
+    error: Optional[str] = None
