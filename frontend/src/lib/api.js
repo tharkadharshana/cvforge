@@ -76,7 +76,8 @@ export const api = {
   getJob: (jobId) => req(`/generate/${jobId}`),
   listApplications: () => req("/applications"),
   getApplication: (id) => req(`/applications/${id}`),
-  improveApplication: (id) => req(`/applications/${id}/improve`, { method: "POST" }),
+  improveApplication: (id, auto = false) =>
+    req(`/applications/${id}/improve${auto ? "?auto=true" : ""}`, { method: "POST" }),
 
   // billing
   billingSummary: () => req("/billing/summary"),

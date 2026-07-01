@@ -56,6 +56,9 @@ export default function Generate() {
   const [tailoredCv, setTailoredCv] = useState(null);
   const [coverLetter, setCoverLetter] = useState(null);
   const [critique, setCritique] = useState(null);
+  const [autoTuning, setAutoTuning] = useState(false);
+
+  const MAX_AUTO_RETRIES = 2; // free retries to honor the plan's ATS guarantee
 
   if (!stLoading && status && !status.has_base_cv) return <Navigate to="/onboarding" replace />;
 
@@ -69,7 +72,31 @@ export default function Generate() {
     finally { setFetching(false); }
   };
 
+  // Free, bounded auto-retries: if the score is below the plan's guarantee,
+  // re-run the improve pass (no credit charged for these) keeping the best result.
+  const autoTune = async (id, crit) => {
+    let best = crit;
+    if (!best || best.meets_ats_guarantee !== false) return best;
+    setAutoTuning(true);
+    try {
+      for (let i = 0; i < MAX_AUTO_RETRIES; i++) {
+        const r = await api.improveApplication(id, true);
+        setTailoredCv(r.tailored_cv);
+        setCoverLetter(r.cover_letter);
+        setCritique(r.critique);
+        best = r.critique;
+        if (best?.meets_ats_guarantee) break;
+      }
+    } catch {
+      // auto-tune is best-effort; keep whatever score we already have
+    } finally {
+      setAutoTuning(false);
+    }
+    return best;
+  };
+
   const runFrom = async (id, fromIndex) => {
+    let lastCrit = critique;
     for (let i = fromIndex; i < STEPS.length; i++) {
       const step = STEPS[i];
       setStepStatus((s) => ({ ...s, [step.key]: "running" }));
@@ -78,7 +105,7 @@ export default function Generate() {
         const r = await step.call(id);
         if (step.key === "tailor") setTailoredCv(r.tailored_cv);
         if (step.key === "cover") setCoverLetter(r.cover_letter);
-        if (step.key === "critique") setCritique(r.critique);
+        if (step.key === "critique") { setCritique(r.critique); lastCrit = r.critique; }
         setStepStatus((s) => ({ ...s, [step.key]: "done" }));
       } catch (e) {
         setStepStatus((s) => ({ ...s, [step.key]: "error" }));
@@ -87,6 +114,7 @@ export default function Generate() {
         return;
       }
     }
+    await autoTune(id, lastCrit);
     setBusy(false);
     refreshCredits();
   };
@@ -159,6 +187,9 @@ export default function Generate() {
       {jobId && (
         <div className="mt-5 panel p-5">
           <Stepper jobStatus={stepStatus} steps={STEPS} onRetry={retryStep} busy={busy} />
+          {autoTuning && (
+            <div className="mt-2"><Spinner label="Boosting ATS score to meet your plan guarantee (free)" /></div>
+          )}
           {Object.values(stepError).some(Boolean) && (
             <div className="mt-3"><Banner>{Object.values(stepError).find(Boolean)}</Banner></div>
           )}

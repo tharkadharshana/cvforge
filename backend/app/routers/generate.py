@@ -165,14 +165,20 @@ def get_job(job_id: int, db: Session = Depends(get_db), user: models.User = Depe
 
 
 @router.post("/applications/{app_id}/improve", response_model=schemas.GenerateOut)
-def improve_application(app_id: int, db: Session = Depends(get_db),
+def improve_application(app_id: int, auto: bool = False, db: Session = Depends(get_db),
                          user: models.User = Depends(get_current_user)):
     a = _get_app(db, user, app_id)
     if a.status != "done":
         raise HTTPException(status_code=409, detail="Application is not complete yet")
 
     billing.maybe_refill_monthly(db, user)
-    if not billing.has_credits(user):
+
+    # An "auto" improve is a free retry the backend offers to honor the plan's ATS
+    # guarantee: only allowed for paid plans with a guarantee (min > 0) whose current
+    # score is still below it. Anything else falls back to a normal charged improve.
+    target = billing.min_ats_score_for(user)
+    free = auto and target > 0 and int(a.ats_score or 0) < target
+    if not free and not billing.has_credits(user):
         log.warning("improve blocked user=%s: out of credits (%s)", user.id, user.credits)
         audit.record("generate_improve", status="blocked", user_id=user.id,
                      meta={"why": "no_credits", "credits": user.credits or 0, "application_id": app_id})
@@ -191,21 +197,34 @@ def improve_application(app_id: int, db: Session = Depends(get_db),
                      meta={"why": "llm_error", "error": str(e)[:200], "application_id": a.id})
         raise HTTPException(status_code=502, detail=f"LLM generation failed: {e}")
 
-    pipeline.annotate_ats_guarantee(crit, billing.min_ats_score_for(user))
-    a.tailored_cv = tailored.model_dump()
-    a.cover_letter = cover_text
-    a.ats_score = int(crit.get("ats_score", 0))
-    a.critique = crit
+    pipeline.annotate_ats_guarantee(crit, target)
+    new_score = int(crit.get("ats_score", 0))
+
+    # Never let a retry regress the result: keep the new pass only if it scores
+    # at least as high as what the user already had.
+    if new_score >= int(a.ats_score or 0):
+        a.tailored_cv = tailored.model_dump()
+        a.cover_letter = cover_text
+        a.ats_score = new_score
+        a.critique = crit
+        out_cv, out_cover, out_crit = tailored, cover_text, crit
+    else:
+        out_cv = CVData.model_validate(a.tailored_cv)
+        out_cover = a.cover_letter
+        out_crit = pipeline.annotate_ats_guarantee(a.critique or {}, target)
     db.commit()
     db.refresh(a)
-    billing.charge_generation(db, user, ref=f"improve:{a.id}")
+
+    if not free:
+        billing.charge_generation(db, user, ref=f"improve:{a.id}")
     audit.record("generate_improve", status="ok", user_id=user.id,
-                 meta={"application_id": a.id, "ats_score": a.ats_score, "credits_after": user.credits})
+                 meta={"application_id": a.id, "ats_score": a.ats_score,
+                       "auto": free, "charged": not free, "credits_after": user.credits})
     return schemas.GenerateOut(
         application_id=a.id,
-        tailored_cv=tailored,
-        cover_letter=cover_text,
-        critique=schemas.CritiqueOut(**crit),
+        tailored_cv=out_cv,
+        cover_letter=out_cover,
+        critique=schemas.CritiqueOut(**out_crit),
     )
 
 
