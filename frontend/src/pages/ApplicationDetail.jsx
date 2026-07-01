@@ -4,6 +4,7 @@ import { api, downloadFile } from "../lib/api";
 import { useCredits } from "../lib/credits";
 import { Banner, Spinner, ScoreGauge } from "../components/ui";
 import CVView from "../components/CVView";
+import CVEditor from "../components/CVEditor";
 
 export function DownloadBar({ id }) {
   const [busy, setBusy] = useState("");
@@ -54,6 +55,35 @@ export function ImproveButton({ applicationId, onImproved }) {
     <div className="flex flex-col items-end gap-2">
       <button className="btn-ghost text-[11px] px-3 py-2" disabled={busy} onClick={run}>
         {busy ? "Improving…" : "↑ Improve score (1 credit)"}
+      </button>
+      {paywall && <div className="text-[12px]"><Link to="/billing" className="text-accent">Out of credits — top up →</Link></div>}
+      {err && <Banner>{err}</Banner>}
+    </div>
+  );
+}
+
+export function ReevaluateButton({ applicationId, free, onDone }) {
+  const { refresh: refreshCredits } = useCredits();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [paywall, setPaywall] = useState(false);
+
+  const run = async () => {
+    setErr(""); setPaywall(false); setBusy(true);
+    try {
+      const app = await api.reevaluateApplication(applicationId);
+      onDone(app);
+      refreshCredits();
+    } catch (e) {
+      if (e.status === 402) setPaywall(true);
+      else setErr(e.message);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-2">
+      <button className="btn-primary text-[12px] px-3 py-2" disabled={busy} onClick={run}>
+        {busy ? "Scoring…" : free ? "Re-evaluate ATS (free)" : "Re-evaluate ATS (1 credit)"}
       </button>
       {paywall && <div className="text-[12px]"><Link to="/billing" className="text-accent">Out of credits — top up →</Link></div>}
       {err && <Banner>{err}</Banner>}
@@ -117,6 +147,12 @@ export default function ApplicationDetail() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
 
+  // manual-edit state
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(null);        // working copy of tailored_cv while editing
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState("");
+
   useEffect(() => {
     (async () => {
       try { setApp(await api.getApplication(id)); }
@@ -129,9 +165,23 @@ export default function ApplicationDetail() {
   if (err) return <Banner>{err}</Banner>;
   if (!app) return null;
 
+  const stale = !!app.ats_stale;
+
   const onImproved = (r) => {
     setApp({ ...app, tailored_cv: r.tailored_cv, cover_letter: r.cover_letter,
-      ats_score: r.critique?.ats_score || 0, critique: r.critique });
+      ats_score: r.critique?.ats_score || 0, critique: r.critique, ats_stale: false });
+  };
+
+  const startEdit = () => { setDraft(JSON.parse(JSON.stringify(app.tailored_cv))); setEditing(true); setSaveErr(""); };
+  const cancelEdit = () => { setEditing(false); setDraft(null); };
+  const saveEdit = async () => {
+    setSaveErr(""); setSaving(true);
+    try {
+      const updated = await api.patchApplication(app.id, { tailored_cv: draft });
+      setApp(updated);            // server echoes ats_stale: true
+      setEditing(false); setDraft(null);
+    } catch (e) { setSaveErr(e.message); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -139,29 +189,61 @@ export default function ApplicationDetail() {
       <Link to="/applications" className="label text-accent">← History</Link>
       <div className="flex items-center justify-between gap-4 panel p-5 flex-wrap">
         <div className="flex items-center gap-5">
-          <ScoreGauge score={app.ats_score || 0} />
+          {stale ? (
+            <div className="w-[64px] h-[64px] rounded-full border border-line2 flex items-center justify-center text-muted font-mono text-[10px] text-center leading-tight">ATS<br/>stale</div>
+          ) : (
+            <ScoreGauge score={app.ats_score || 0} />
+          )}
           <div>
             <div className="font-display font-bold text-xl">{app.job_title || "Untitled role"}</div>
             <div className="font-mono text-[12px] text-muted">{app.company || "—"}</div>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
-          <ImproveButton applicationId={app.id} onImproved={onImproved} />
+          {!editing && (
+            stale
+              ? <ReevaluateButton applicationId={app.id} free={true} onDone={setApp} />
+              : <ImproveButton applicationId={app.id} onImproved={onImproved} />
+          )}
+          {!editing && <button className="btn-ghost text-[11px] px-3 py-2" onClick={startEdit}>✎ Edit CV</button>}
           <DownloadBar id={app.id} />
         </div>
       </div>
 
-      <CritiquePanel critique={app.critique} />
+      {stale && !editing && (
+        <Banner kind="error">
+          Since you edited this CV manually, the ATS score isn't available.
+          Re-evaluate to score the current version.
+        </Banner>
+      )}
+
+      {!editing && !stale && <CritiquePanel critique={app.critique} />}
 
       <div>
-        <h2 className="label mb-2">Tailored CV</h2>
-        <div className="panel p-7"><CVView cv={app.tailored_cv} /></div>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="label">Tailored CV</h2>
+          {editing && (
+            <div className="flex gap-2">
+              <button className="btn-ghost text-[11px] px-3 py-1.5" disabled={saving} onClick={cancelEdit}>Cancel</button>
+              <button className="btn-primary text-[11px] px-3 py-1.5" disabled={saving} onClick={saveEdit}>{saving ? "Saving…" : "Save edits"}</button>
+            </div>
+          )}
+        </div>
+        {editing && (
+          <Banner>Editing manually disables the ATS score. After saving, re-evaluate to score the new version.</Banner>
+        )}
+        {saveErr && <Banner>{saveErr}</Banner>}
+        {editing
+          ? <div className="mt-3"><CVEditor cv={draft} onChange={setDraft} /></div>
+          : <div className="panel p-7"><CVView cv={app.tailored_cv} /></div>}
       </div>
 
-      <div>
-        <h2 className="label mb-2">Cover letter</h2>
-        <div className="panel p-7 font-read text-[15px] leading-relaxed whitespace-pre-wrap">{app.cover_letter}</div>
-      </div>
+      {!editing && (
+        <div>
+          <h2 className="label mb-2">Cover letter</h2>
+          <div className="panel p-7 font-read text-[15px] leading-relaxed whitespace-pre-wrap">{app.cover_letter}</div>
+        </div>
+      )}
     </div>
   );
 }

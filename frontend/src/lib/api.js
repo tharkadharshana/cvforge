@@ -78,6 +78,10 @@ export const api = {
   getApplication: (id) => req(`/applications/${id}`),
   improveApplication: (id, auto = false) =>
     req(`/applications/${id}/improve${auto ? "?auto=true" : ""}`, { method: "POST" }),
+  // partial update: { tailored_cv?, cover_letter?, template_id?, template_overrides? }
+  patchApplication: (id, patch) => req(`/applications/${id}`, { method: "PATCH", body: patch }),
+  reevaluateApplication: (id) => req(`/applications/${id}/reevaluate`, { method: "POST" }),
+  listTemplates: () => req("/templates"),
 
   // billing
   billingSummary: () => req("/billing/summary"),

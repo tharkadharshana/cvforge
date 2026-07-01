@@ -239,3 +239,31 @@ class GenerateJobOut(BaseModel):
     critique: Optional[CritiqueOut] = None
     ats_score: Optional[int] = None
     error: Optional[str] = None
+
+
+# ---------- manual editing & templates ----------
+class ApplicationPatchIn(BaseModel):
+    """Partial update of an application. Any field left None is untouched.
+
+    Editing ``tailored_cv`` marks the ATS score stale (the stored score no longer
+    reflects the CV) until the user re-evaluates. Setting only template fields does
+    not affect the score.
+    """
+    tailored_cv: Optional[CVData] = None
+    cover_letter: Optional[str] = None
+    template_id: Optional[str] = None
+    template_overrides: Optional[dict] = None
+
+
+class ApplicationOut(BaseModel):
+    id: int
+    job_title: str = ""
+    company: str = ""
+    tailored_cv: Optional[CVData] = None
+    cover_letter: Optional[str] = None
+    ats_score: Optional[int] = None
+    critique: Optional[CritiqueOut] = None
+    ats_stale: bool = False
+    template_id: str = "ats_classic"
+    template_overrides: Optional[dict] = None
+    status: str
