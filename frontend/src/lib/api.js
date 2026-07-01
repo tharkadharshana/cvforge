@@ -76,7 +76,12 @@ export const api = {
   getJob: (jobId) => req(`/generate/${jobId}`),
   listApplications: () => req("/applications"),
   getApplication: (id) => req(`/applications/${id}`),
-  improveApplication: (id) => req(`/applications/${id}/improve`, { method: "POST" }),
+  improveApplication: (id, auto = false) =>
+    req(`/applications/${id}/improve${auto ? "?auto=true" : ""}`, { method: "POST" }),
+  // partial update: { tailored_cv?, cover_letter?, template_id?, template_overrides? }
+  patchApplication: (id, patch) => req(`/applications/${id}`, { method: "PATCH", body: patch }),
+  reevaluateApplication: (id) => req(`/applications/${id}/reevaluate`, { method: "POST" }),
+  listTemplates: () => req("/templates"),
 
   // billing
   billingSummary: () => req("/billing/summary"),
@@ -87,6 +92,8 @@ export const api = {
 
   // jobs
   fetchJobUrl: (url) => req("/jobs/fetch-url", { method: "POST", body: { url } }),
+  searchJobs: (q, location = "", page = 1) =>
+    req(`/jobs/search?q=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}&page=${page}`),
 
   downloadUrl: (id, doc, fmt) =>
     `${BASE}/applications/${id}/download?doc=${doc}&fmt=${fmt}`,

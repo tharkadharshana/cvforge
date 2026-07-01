@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     drafter_fallback_provider: str = "deepseek"
     critic_fallback_provider: str = "gemini"
 
+    # --- job aggregator (Adzuna free tier) ---
+    # Legal job-search feed so users can find roles and generate a CV against one
+    # without pasting the description by hand. Register at developer.adzuna.com
+    # (free: ~250 req/day). Leave blank to disable the /jobs/search endpoint.
+    adzuna_app_id: str = ""
+    adzuna_app_key: str = ""
+    adzuna_country: str = "us"          # Adzuna country code: us, gb, ca, au, de, ...
+
     # comma-separated emails granted admin/support access (audit + manual credit adjust)
     admin_emails: str = ""
 

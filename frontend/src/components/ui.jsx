@@ -19,6 +19,7 @@ export function Banner({ kind = "error", children }) {
   const map = {
     error: "border-bad text-bad",
     ok: "border-good text-good",
+    warn: "border-warn text-warn",
     info: "border-line2 text-muted",
   };
   if (!children) return null;

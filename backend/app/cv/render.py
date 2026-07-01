@@ -27,22 +27,56 @@ def _contact_line(cv: CVData) -> str:
     return "  |  ".join([p for p in parts if p])
 
 
+# Default ATS-safe style. render_pdf/render_docx accept an optional `style` dict
+# (from cv/templates.resolve_style) that overrides these; anything missing falls
+# back here, so callers that pass nothing get the original, byte-stable output.
+_DEFAULT_STYLE = {
+    "font": "Helvetica", "accent": "#1A1A1A", "heading": "rule",
+    "name_size": 18, "body_size": 10.5, "columns": 1,
+}
+
+# fpdf core fonts / docx safe fonts. Non-core template fonts (e.g. Inter) map to a
+# core font here so ats_safe rendering never fails on a missing font.
+_PDF_FONT = {"Helvetica": "Helvetica", "Times": "Times", "Courier": "Courier"}
+_DOCX_FONT = {"Helvetica": "Calibri", "Times": "Cambria", "Courier": "Consolas"}
+
+
+def _hex_rgb(h: str) -> tuple[int, int, int]:
+    h = (h or "#1A1A1A").lstrip("#")
+    if len(h) != 6:
+        h = "1A1A1A"
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
+def _style(style: dict | None) -> dict:
+    s = dict(_DEFAULT_STYLE)
+    if style:
+        s.update({k: v for k, v in style.items() if v is not None})
+    return s
+
+
 # ---------------- DOCX ----------------
-def render_docx(cv: CVData) -> bytes:
+def render_docx(cv: CVData, style: dict | None = None) -> bytes:
     from docx import Document
     from docx.shared import Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
+    s = _style(style)
+    accent = RGBColor(*_hex_rgb(s["accent"]))
+    body_font = _DOCX_FONT.get(s["font"], "Calibri")
+    caps = s["heading"] == "caps"
+
     doc = Document()
-    style = doc.styles["Normal"]
-    style.font.name = "Calibri"
-    style.font.size = Pt(10.5)
+    base = doc.styles["Normal"]
+    base.font.name = body_font
+    base.font.size = Pt(float(s["body_size"]))
 
     name = doc.add_paragraph()
     name.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = name.add_run(cv.contact.full_name or "")
     run.bold = True
-    run.font.size = Pt(18)
+    run.font.size = Pt(float(s["name_size"]))
+    run.font.color.rgb = accent
 
     contact = doc.add_paragraph(_contact_line(cv))
     contact.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -51,10 +85,10 @@ def render_docx(cv: CVData) -> bytes:
 
     def heading(text: str):
         p = doc.add_paragraph()
-        run = p.add_run(text)
+        run = p.add_run(text.upper() if caps else text)
         run.bold = True
         run.font.size = Pt(12)
-        run.font.color.rgb = RGBColor(0x1A, 0x1A, 0x1A)
+        run.font.color.rgb = accent
         p.space_before = Pt(8)
 
     def bullet(text: str):
@@ -133,38 +167,49 @@ def _txt(s: str) -> str:
              .encode("latin-1", "replace").decode("latin-1"))
 
 
-def render_pdf(cv: CVData) -> bytes:
+def render_pdf(cv: CVData, style: dict | None = None) -> bytes:
     from fpdf import FPDF
+
+    s = _style(style)
+    font = _PDF_FONT.get(s["font"], "Helvetica")
+    accent = _hex_rgb(s["accent"])
+    caps = s["heading"] == "caps"
+    body_size = float(s["body_size"])
 
     pdf = FPDF(format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     pdf.set_margins(18, 15, 18)
 
-    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(*accent)
+    pdf.set_font(font, "B", float(s["name_size"]))
     pdf.cell(0, 9, _txt(cv.contact.full_name or ""), align="C", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font(font, "", 9)
     pdf.cell(0, 5, _txt(_contact_line(cv)), align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(2)
 
     def heading(text: str):
         pdf.ln(2)
         pdf.set_x(pdf.l_margin)
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 6, _txt(text), new_x="LMARGIN", new_y="NEXT")
-        pdf.set_draw_color(120, 120, 120)
-        y = pdf.get_y()
-        pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
+        pdf.set_text_color(*accent)
+        pdf.set_font(font, "B", 12)
+        pdf.cell(0, 6, _txt(text.upper() if caps else text), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
+        if s["heading"] != "plain":
+            pdf.set_draw_color(*accent)
+            y = pdf.get_y()
+            pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
         pdf.ln(1)
 
-    def body(text: str, bold=False, italic=False, size=10):
+    def body(text: str, bold=False, italic=False, size=None):
         pdf.set_x(pdf.l_margin)
-        pdf.set_font("Helvetica", ("B" if bold else "") + ("I" if italic else ""), size)
+        pdf.set_font(font, ("B" if bold else "") + ("I" if italic else ""), size or body_size)
         pdf.multi_cell(0, 5, _txt(text))
 
     def bullet(text: str):
         pdf.set_x(pdf.l_margin)
-        pdf.set_font("Helvetica", "", 10)
+        pdf.set_font(font, "", body_size)
         pdf.multi_cell(0, 5, _txt(f"- {text}"))
 
     if cv.summary:
