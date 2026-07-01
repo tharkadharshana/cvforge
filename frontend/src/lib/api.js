@@ -92,6 +92,8 @@ export const api = {
 
   // jobs
   fetchJobUrl: (url) => req("/jobs/fetch-url", { method: "POST", body: { url } }),
+  searchJobs: (q, location = "", page = 1) =>
+    req(`/jobs/search?q=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}&page=${page}`),
 
   downloadUrl: (id, doc, fmt) =>
     `${BASE}/applications/${id}/download?doc=${doc}&fmt=${fmt}`,

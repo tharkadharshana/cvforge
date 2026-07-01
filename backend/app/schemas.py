@@ -178,6 +178,22 @@ class FetchUrlOut(BaseModel):
     text: str
 
 
+class JobListing(BaseModel):
+    id: str = ""
+    title: str = ""
+    company: str = ""
+    location: str = ""
+    description: str = ""
+    url: str = ""
+    source: str = ""
+
+
+class JobSearchOut(BaseModel):
+    results: list[JobListing] = []
+    page: int = 1
+    enabled: bool = True
+
+
 # ---------- generation ----------
 class GenerateIn(BaseModel):
     job_description: str = Field(min_length=20)

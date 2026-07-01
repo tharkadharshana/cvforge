@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Navigate, Link } from "react-router-dom";
+import { useNavigate, Navigate, Link, useLocation } from "react-router-dom";
 import { api } from "../lib/api";
 import { useCVStatus } from "../lib/cvstatus";
 import { useCredits } from "../lib/credits";
@@ -39,12 +39,14 @@ function Stepper({ jobStatus, steps, onRetry, busy }) {
 
 export default function Generate() {
   const nav = useNavigate();
+  const loc = useLocation();
+  const prefill = loc.state || {};   // set when arriving from the Jobs page
   const { status, loading: stLoading } = useCVStatus();
   const { refresh: refreshCredits } = useCredits();
   const [url, setUrl] = useState("");
-  const [jd, setJd] = useState("");
-  const [company, setCompany] = useState("");
-  const [title, setTitle] = useState("");
+  const [jd, setJd] = useState(prefill.job_description || "");
+  const [company, setCompany] = useState(prefill.company || "");
+  const [title, setTitle] = useState(prefill.job_title || "");
   const [fetching, setFetching] = useState(false);
   const [fetchErr, setFetchErr] = useState("");
   const [busy, setBusy] = useState(false);
