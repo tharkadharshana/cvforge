@@ -4,7 +4,8 @@ import { api } from "../lib/api";
 import { useCVStatus } from "../lib/cvstatus";
 import { useCredits } from "../lib/credits";
 import { Banner, Spinner, ScoreGauge } from "../components/ui";
-import CVView from "../components/CVView";
+import TemplatePicker from "../components/TemplatePicker";
+import { renderTemplate, TEMPLATES } from "../templates/registry";
 import { DownloadBar, CritiquePanel, ImproveButton } from "./ApplicationDetail";
 
 const STEPS = [
@@ -57,6 +58,7 @@ export default function Generate() {
   const [coverLetter, setCoverLetter] = useState(null);
   const [critique, setCritique] = useState(null);
   const [autoTuning, setAutoTuning] = useState(false);
+  const [templateId, setTemplateId] = useState("ats_classic");
 
   const MAX_AUTO_RETRIES = 2; // free retries to honor the plan's ATS guarantee
 
@@ -125,7 +127,7 @@ export default function Generate() {
     setStepStatus({}); setStepError({});
     let id;
     try {
-      const r = await api.startGeneration({ job_description: jd, company, job_title: title });
+      const r = await api.startGeneration({ job_description: jd, company, job_title: title, template_id: templateId });
       id = r.job_id;
       setJobId(id);
     } catch (e) {
@@ -177,6 +179,9 @@ export default function Generate() {
       <textarea className="field min-h-[220px] resize-y leading-relaxed" value={jd} onChange={(e) => setJd(e.target.value)}
         placeholder="Paste the full job description here…" />
 
+      <div className="label mt-4 mb-2">Template (you can change this any time later)</div>
+      <TemplatePicker value={templateId} onSelect={setTemplateId} busy={busy} />
+
       <div className="flex items-center justify-between mt-4 gap-3 flex-wrap">
         <div>{busy && !jobId && <Spinner label="Starting" />}</div>
         <button className="btn-primary" disabled={busy || jd.trim().length < 20} onClick={run}>
@@ -214,14 +219,18 @@ export default function Generate() {
                 <ImproveButton applicationId={jobId} onImproved={(r) => {
                   setTailoredCv(r.tailored_cv); setCoverLetter(r.cover_letter); setCritique(r.critique);
                 }} />
-                <DownloadBar id={jobId} />
+                <DownloadBar id={jobId} onPrint={() => window.print()} designer={!(TEMPLATES[templateId] || TEMPLATES.ats_classic).ats_safe} />
               </div>
             </div>
           )}
           {critique && <CritiquePanel critique={critique} />}
           <div>
             <h2 className="label mb-2">Tailored CV</h2>
-            <div className="panel p-7"><CVView cv={tailoredCv} /></div>
+            <div className="panel p-4 overflow-x-auto">
+              <div style={{ transform: "scale(0.62)", transformOrigin: "top left", width: "210mm" }}>
+                {renderTemplate(templateId, tailoredCv)}
+              </div>
+            </div>
           </div>
           {coverLetter && (
             <div>
@@ -234,6 +243,7 @@ export default function Generate() {
               Open in history →
             </button>
           )}
+          <div className="cv-print-root">{renderTemplate(templateId, tailoredCv)}</div>
         </div>
       )}
     </div>

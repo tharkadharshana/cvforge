@@ -3,10 +3,11 @@ import { useParams, Link } from "react-router-dom";
 import { api, downloadFile } from "../lib/api";
 import { useCredits } from "../lib/credits";
 import { Banner, Spinner, ScoreGauge } from "../components/ui";
-import CVView from "../components/CVView";
 import CVEditor from "../components/CVEditor";
+import TemplatePicker from "../components/TemplatePicker";
+import { renderTemplate, TEMPLATES } from "../templates/registry";
 
-export function DownloadBar({ id }) {
+export function DownloadBar({ id, onPrint, designer }) {
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const grab = async (doc, fmt) => {
@@ -16,7 +17,7 @@ export function DownloadBar({ id }) {
     finally { setBusy(""); }
   };
   const items = [
-    ["cv", "pdf", "CV · PDF"], ["cv", "docx", "CV · DOCX"],
+    ["cv", "pdf", "ATS CV · PDF"], ["cv", "docx", "ATS CV · DOCX"],
     ["cover", "pdf", "Letter · PDF"], ["cover", "docx", "Letter · DOCX"],
   ];
   return (
@@ -27,6 +28,11 @@ export function DownloadBar({ id }) {
             {busy === `${doc}-${fmt}` ? "…" : `↓ ${label}`}
           </button>
         ))}
+        {onPrint && (
+          <button className="btn-ghost text-[11px] px-3 py-2" onClick={onPrint}>
+            🖨 {designer ? "Print designer PDF" : "Print PDF"}
+          </button>
+        )}
       </div>
       {err && <Banner>{err}</Banner>}
     </div>
@@ -153,9 +159,17 @@ export default function ApplicationDetail() {
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
 
+  // template state (mirrors app.template_id; changes persist via PATCH, no credit)
+  const [templateId, setTemplateId] = useState("ats_classic");
+  const [showPicker, setShowPicker] = useState(false);
+
   useEffect(() => {
     (async () => {
-      try { setApp(await api.getApplication(id)); }
+      try {
+        const a = await api.getApplication(id);
+        setApp(a);
+        setTemplateId(a.template_id || "ats_classic");
+      }
       catch (e) { setErr(e.message); }
       finally { setLoading(false); }
     })();
@@ -166,6 +180,15 @@ export default function ApplicationDetail() {
   if (!app) return null;
 
   const stale = !!app.ats_stale;
+  const tpl = TEMPLATES[templateId] || TEMPLATES.ats_classic;
+
+  const selectTemplate = async (tid) => {
+    setTemplateId(tid);                    // optimistic — pure re-render, free
+    try { await api.patchApplication(app.id, { template_id: tid }); }
+    catch { /* keep the local selection; persistence can retry on next change */ }
+  };
+
+  const printCV = () => window.print();
 
   const onImproved = (r) => {
     setApp({ ...app, tailored_cv: r.tailored_cv, cover_letter: r.cover_letter,
@@ -205,10 +228,27 @@ export default function ApplicationDetail() {
               ? <ReevaluateButton applicationId={app.id} free={true} onDone={setApp} />
               : <ImproveButton applicationId={app.id} onImproved={onImproved} />
           )}
+          {!editing && <button className="btn-ghost text-[11px] px-3 py-2" onClick={() => setShowPicker((v) => !v)}>🎨 Template</button>}
           {!editing && <button className="btn-ghost text-[11px] px-3 py-2" onClick={startEdit}>✎ Edit CV</button>}
-          <DownloadBar id={app.id} />
+          <DownloadBar id={app.id} onPrint={printCV} designer={!tpl.ats_safe} />
         </div>
       </div>
+
+      {!editing && showPicker && (
+        <div className="panel p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="label">Template</h2>
+            <span className="font-mono text-[11px] text-muted">Switching is free — the ATS score always reflects the ATS-safe file.</span>
+          </div>
+          <TemplatePicker value={templateId} onSelect={selectTemplate} />
+          {!tpl.ats_safe && (
+            <Banner kind="warn">
+              Designer templates look great for humans but may parse poorly in some ATS.
+              Your ATS score and the "Download ATS" files always use the safe layout.
+            </Banner>
+          )}
+        </div>
+      )}
 
       {stale && !editing && (
         <Banner kind="error">
@@ -235,7 +275,14 @@ export default function ApplicationDetail() {
         {saveErr && <Banner>{saveErr}</Banner>}
         {editing
           ? <div className="mt-3"><CVEditor cv={draft} onChange={setDraft} /></div>
-          : <div className="panel p-7"><CVView cv={app.tailored_cv} /></div>}
+          : (
+            <div className="panel p-4 overflow-x-auto">
+              {/* live preview of the selected template, scaled down to fit */}
+              <div style={{ transform: "scale(0.62)", transformOrigin: "top left", width: "210mm" }}>
+                {renderTemplate(templateId, app.tailored_cv)}
+              </div>
+            </div>
+          )}
       </div>
 
       {!editing && (
@@ -244,6 +291,9 @@ export default function ApplicationDetail() {
           <div className="panel p-7 font-read text-[15px] leading-relaxed whitespace-pre-wrap">{app.cover_letter}</div>
         </div>
       )}
+
+      {/* Off-screen full-size render used only by print-to-PDF (see .cv-print-root in index.css) */}
+      <div className="cv-print-root">{renderTemplate(templateId, app.tailored_cv)}</div>
     </div>
   );
 }

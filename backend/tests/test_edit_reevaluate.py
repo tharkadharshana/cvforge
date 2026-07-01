@@ -111,6 +111,30 @@ def test_unknown_template_rejected(client, monkeypatch):
     assert r.status_code == 400
 
 
+def test_start_accepts_template_id(client, monkeypatch):
+    _mock_llm(monkeypatch)
+    H = auth_headers(client, email="tpl3@test.com")
+    _with_base_cv(client, H)
+    job_id = client.post("/generate/start", headers=H,
+                         json={"job_description": JD, "template_id": "aurora"}).json()["job_id"]
+    client.post(f"/generate/{job_id}/tailor", headers=H)
+    client.post(f"/generate/{job_id}/cover", headers=H)
+    client.post(f"/generate/{job_id}/critique", headers=H)
+    assert client.get(f"/applications/{job_id}", headers=H).json()["template_id"] == "aurora"
+
+
+def test_start_falls_back_on_unknown_template(client, monkeypatch):
+    _mock_llm(monkeypatch)
+    H = auth_headers(client, email="tpl4@test.com")
+    _with_base_cv(client, H)
+    job_id = client.post("/generate/start", headers=H,
+                         json={"job_description": JD, "template_id": "bogus"}).json()["job_id"]
+    client.post(f"/generate/{job_id}/tailor", headers=H)
+    client.post(f"/generate/{job_id}/cover", headers=H)
+    client.post(f"/generate/{job_id}/critique", headers=H)
+    assert client.get(f"/applications/{job_id}", headers=H).json()["template_id"] == "ats_classic"
+
+
 def test_templates_catalog_is_public_and_has_default(client):
     r = client.get("/templates")
     assert r.status_code == 200

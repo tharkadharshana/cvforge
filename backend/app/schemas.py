@@ -183,6 +183,7 @@ class GenerateIn(BaseModel):
     job_description: str = Field(min_length=20)
     job_title: str = ""
     company: str = ""
+    template_id: str = "ats_classic"   # starting render template (see cv/templates.py)
 
 
 class CritiqueOut(BaseModel):

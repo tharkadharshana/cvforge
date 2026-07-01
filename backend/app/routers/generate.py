@@ -59,11 +59,13 @@ def start(payload: schemas.GenerateIn, db: Session = Depends(get_db),
                      meta={"why": "no_credits", "credits": user.credits or 0})
         raise HTTPException(status_code=402, detail="Out of credits. Upgrade to keep generating.")
 
+    template_id = payload.template_id if payload.template_id in templates.TEMPLATES else templates.DEFAULT_TEMPLATE_ID
     job = models.Application(
         user_id=user.id,
         job_title=payload.job_title,
         company=payload.company,
         job_description=payload.job_description,
+        template_id=template_id,
         status="pending",
     )
     db.add(job)
@@ -370,12 +372,15 @@ def download(app_id: int, doc: str = "cv", fmt: str = "pdf",
         raise HTTPException(status_code=409, detail="Application is not complete yet")
     cv = CVData.model_validate(a.tailored_cv)
     slug = (a.company or "application").replace(" ", "_")
+    # ATS-safe style for the chosen template (designer templates fall back to the
+    # default safe style; this is always the parseable file the user uploads).
+    style = templates.resolve_style(a.template_id, a.template_overrides)
 
     if doc == "cv" and fmt == "pdf":
-        return Response(render.render_pdf(cv), media_type="application/pdf",
+        return Response(render.render_pdf(cv, style), media_type="application/pdf",
                         headers={"Content-Disposition": f'attachment; filename="CV_{slug}.pdf"'})
     if doc == "cv" and fmt == "docx":
-        return Response(render.render_docx(cv),
+        return Response(render.render_docx(cv, style),
                         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         headers={"Content-Disposition": f'attachment; filename="CV_{slug}.docx"'})
     if doc == "cover" and fmt == "docx":
