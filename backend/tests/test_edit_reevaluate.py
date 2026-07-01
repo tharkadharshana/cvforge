@@ -143,3 +143,21 @@ def test_templates_catalog_is_public_and_has_default(client):
     assert body["default"] in ids
     assert "ats_classic" in ids
     assert any(not t["ats_safe"] for t in body["templates"])   # at least one designer template
+
+
+def test_autofill_profile_is_flat_and_has_download_urls(client, monkeypatch):
+    H, app_id = _completed_app(client, monkeypatch, "auto1@test.com")
+    r = client.get(f"/applications/{app_id}/autofill-profile", headers=H)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["full_name"] == "Jane Doe"
+    assert body["first_name"] == "Jane" and body["last_name"] == "Doe"
+    assert body["email"] == "j@test.com"
+    assert "Python" in body["skills"]
+    assert body["cv_pdf_url"].endswith(f"/applications/{app_id}/download?doc=cv&fmt=pdf")
+    assert body["cover_pdf_url"].endswith(f"/applications/{app_id}/download?doc=cover&fmt=pdf")
+
+
+def test_autofill_profile_requires_auth(client, monkeypatch):
+    H, app_id = _completed_app(client, monkeypatch, "auto2@test.com")
+    assert client.get(f"/applications/{app_id}/autofill-profile").status_code == 401

@@ -272,6 +272,28 @@ class ApplicationPatchIn(BaseModel):
     template_overrides: Optional[dict] = None
 
 
+class AutofillProfile(BaseModel):
+    """Flat, form-friendly view of a tailored CV for the browser autofill extension."""
+    full_name: str = ""
+    first_name: str = ""
+    last_name: str = ""
+    email: str = ""
+    phone: str = ""
+    location: str = ""
+    linkedin: str = ""
+    github: str = ""
+    website: str = ""
+    summary: str = ""
+    skills: list[str] = []
+    current_title: str = ""
+    current_company: str = ""
+    experience: list[dict] = []       # [{title, company, location, start, end}]
+    education: list[dict] = []        # [{degree, institution, start, end}]
+    cover_letter: str = ""
+    cv_pdf_url: str = ""              # authenticated download URLs (need the same bearer token)
+    cover_pdf_url: str = ""
+
+
 class ApplicationOut(BaseModel):
     id: int
     job_title: str = ""

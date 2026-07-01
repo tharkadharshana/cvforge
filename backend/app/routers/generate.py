@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from .. import models, schemas, billing, audit
@@ -278,6 +278,41 @@ def get_application(app_id: int, db: Session = Depends(get_db), user: models.Use
         "template_id": a.template_id or "ats_classic",
         "template_overrides": a.template_overrides,
     }
+
+
+@router.get("/applications/{app_id}/autofill-profile", response_model=schemas.AutofillProfile)
+def autofill_profile(app_id: int, request: Request, db: Session = Depends(get_db),
+                     user: models.User = Depends(get_current_user)):
+    """Flat profile the browser autofill extension maps onto job application forms.
+
+    The extension fills fields the user is looking at; the user reviews and submits.
+    We never auto-submit and never touch LinkedIn's data — this only serves the user's
+    own tailored CV back to them.
+    """
+    a = _get_app(db, user, app_id)
+    if a.status != "done" or not a.tailored_cv:
+        raise HTTPException(status_code=409, detail="Application is not complete yet")
+    cv = CVData.model_validate(a.tailored_cv)
+    c = cv.contact
+    name = (c.full_name or "").strip()
+    first, _, last = name.partition(" ")
+    cur = cv.experience[0] if cv.experience else None
+    base = str(request.base_url).rstrip("/")
+    flat_skills = [s for items in cv.skills.values() for s in (items or [])]
+    return schemas.AutofillProfile(
+        full_name=name, first_name=first, last_name=last,
+        email=c.email, phone=c.phone, location=c.location,
+        linkedin=c.linkedin, github=c.github, website=c.website,
+        summary=cv.summary, skills=flat_skills,
+        current_title=(cur.title if cur else ""), current_company=(cur.company if cur else ""),
+        experience=[{"title": e.title, "company": e.company, "location": e.location,
+                     "start": e.start, "end": e.end} for e in cv.experience],
+        education=[{"degree": e.degree, "institution": e.institution,
+                    "start": e.start, "end": e.end} for e in cv.education],
+        cover_letter=a.cover_letter or "",
+        cv_pdf_url=f"{base}/applications/{a.id}/download?doc=cv&fmt=pdf",
+        cover_pdf_url=f"{base}/applications/{a.id}/download?doc=cover&fmt=pdf",
+    )
 
 
 @router.patch("/applications/{app_id}")
