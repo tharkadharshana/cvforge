@@ -124,6 +124,38 @@ def improve_cover_letter(tailored_cv: dict, previous_letter: str, job_descriptio
     return system, user
 
 
+def ats_check(cv_text: str, job_description: str = "") -> tuple[str, str]:
+    """Standalone ATS audit of raw resume text (public checker, no account needed)."""
+    system = (
+        "You are a strict ATS auditor and senior recruiter. Audit the resume text the way an "
+        "applicant tracking system plus a critical human screener would. Score each category "
+        "0-100 (100 = perfect). Report concrete issues found. Be specific and critical, "
+        "never generic. Output JSON only."
+    )
+    jd_part = (
+        f"\n\nTarget job description (score 'tailoring' against it):\n\"\"\"\n{job_description}\n\"\"\""
+        if job_description.strip() else
+        "\n\nNo job description provided: set \"tailoring\" to null and do not report tailoring issues."
+    )
+    user = (
+        "Return JSON exactly:\n"
+        "{\"ats_score\": int 0-100 overall,\n"
+        " \"parse_rate\": int 0-100 (how cleanly an ATS parses this text: structure, ordering, contact info, section headers),\n"
+        " \"categories\": {\"sections\": int, \"ats_essentials\": int, \"hr_red_flags\": int, "
+        "\"discrimination\": int, \"seniority\": int, \"tailoring\": int|null},\n"
+        " \"issues\": [{\"category\": one of the category keys, \"severity\": \"high\"|\"medium\"|\"low\", "
+        "\"title\": short issue name, \"fix\": 2-4 sentences of concrete, actionable instructions to fix it}]}\n\n"
+        "Category meanings: sections = presence/quality of expected resume sections; "
+        "ats_essentials = contact info, standard headers, parseable dates, keyword-friendly wording; "
+        "hr_red_flags = gaps, job hopping, vague bullets, missing metrics; "
+        "discrimination = info that invites bias (age, photo, marital status, etc.); "
+        "seniority = whether content signals a clear seniority level; "
+        "tailoring = keyword match against the job description."
+        f"{jd_part}\n\nResume text:\n\"\"\"\n{cv_text}\n\"\"\""
+    )
+    return system, user
+
+
 def critique(tailored_cv: dict, cover_letter_text: str, job_description: str) -> tuple[str, str]:
     system = (
         "You are a strict ATS auditor and hiring reviewer. Score the tailored CV against the job description. "
