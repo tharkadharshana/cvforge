@@ -134,7 +134,6 @@ class PlanOut(BaseModel):
     recurring: bool = False
     available: bool = False          # true when a Polar product is configured
     price_per_credit: float = 0.0
-    margin_pct: float = 0.0
     min_ats_score: int = 0           # guaranteed minimum ATS score (0 = no guarantee)
 
 

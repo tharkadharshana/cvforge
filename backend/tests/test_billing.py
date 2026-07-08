@@ -10,8 +10,9 @@ def test_signup_grant_and_deduction(client):
     s = client.get("/billing/summary", headers=H).json()
     assert s["credits"] == 2          # FREE_TRIAL_CREDITS
     assert s["plan"] == "trial"
-    # margin is computed server-side and present
-    assert all("margin_pct" in p for p in s["plans"])
+    # per-credit price is shown to users; the internal profit margin is not shipped
+    assert all("price_per_credit" in p for p in s["plans"])
+    assert all("margin_pct" not in p for p in s["plans"])
 
 
 def test_generate_blocked_when_out_of_credits(client):
