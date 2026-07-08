@@ -37,11 +37,13 @@ Controlled by env vars (see `.env.example`). Source of truth: `app/billing.py`.
    `polar_customer_id`, i.e. at least one prior purchase) for managing
    cards/subscriptions/invoices.
 
-## Margin math (display only)
+## Margin math (internal only)
 
-`PlanOut.price_per_credit` and `margin_pct` are computed from
-`price_usd`, `credits`, and `COST_PER_GENERATION_USD` for display in the
-billing UI — purely informational, not enforced server-side.
+`Plan.price_per_credit` and `Plan.margin_pct` (`app/billing.py`) are both
+computed from `price_usd`, `credits`, and `COST_PER_GENERATION_USD`.
+`price_per_credit` is shown to users in the billing UI ("$X per CV").
+`margin_pct` is your profit margin — it is deliberately **not** included in
+`PlanOut`/`/billing/summary`, so it never reaches the browser.
 
 ## Admin overrides
 
