@@ -44,10 +44,9 @@ def merge_qualification(current: CVData, new_text: str) -> CVData:
     return CVData.model_validate(data)
 
 
-def annotate_ats_guarantee(crit: dict, min_ats_score: int, iterations: int = 1) -> dict:
+def annotate_ats_guarantee(crit: dict, min_ats_score: int) -> dict:
     crit["target_ats_score"] = min_ats_score
     crit["meets_ats_guarantee"] = crit.get("ats_score", 0) >= min_ats_score
-    crit["ats_iterations"] = iterations
     return crit
 
 

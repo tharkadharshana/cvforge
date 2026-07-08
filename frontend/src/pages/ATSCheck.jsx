@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { ThemeToggle } from "../lib/theme";
+import { ScoreGauge } from "../components/ui";
 
 const CATEGORY_LABELS = {
   sections: "Sections",
@@ -128,28 +129,13 @@ export default function ATSCheck() {
 
 function Report({ result, authed }) {
   const { ats_score, parse_rate, categories, issues, detailed } = result;
-  const dash = 264;
   return (
     <div className="mt-8 space-y-4">
       {/* score + parse rate */}
       <div className="grid sm:grid-cols-2 gap-4">
-        <div className="panel p-6 flex items-center gap-5">
-          <div className="relative w-24 h-24 shrink-0">
-            <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-              <circle cx="50" cy="50" r="42" fill="none" stroke="#2a2a2e" strokeWidth="8" />
-              <circle cx="50" cy="50" r="42" fill="none" stroke={scoreColor(ats_score)} strokeWidth="8"
-                strokeDasharray={dash} strokeDashoffset={dash * (1 - ats_score / 100)} />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center font-display font-extrabold text-2xl"
-              style={{ color: scoreColor(ats_score) }}>{ats_score}</div>
-          </div>
-          <div>
-            <div className="label">Your ATS score</div>
-            <div className="font-mono text-sm text-fg mt-1">
-              {ats_score >= 80 ? "Strong — ready to send" : ats_score >= 60 ? "Decent — fixable issues" : "At risk of being filtered"}
-            </div>
-            <div className="label mt-2">{issues.length} issue{issues.length === 1 ? "" : "s"} found</div>
-          </div>
+        <div className="panel p-6">
+          <ScoreGauge score={ats_score} />
+          <div className="label mt-3">{issues.length} issue{issues.length === 1 ? "" : "s"} found</div>
         </div>
         <div className="panel p-6">
           <div className="label mb-2">ATS parse rate</div>

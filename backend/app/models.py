@@ -109,6 +109,7 @@ class AuditEvent(Base):
     request_id: Mapped[str] = mapped_column(String(16), default="", index=True)
     event: Mapped[str] = mapped_column(String(60), index=True)     # e.g. login, generate, webhook_received
     status: Mapped[str] = mapped_column(String(20), default="ok")  # ok | failed | blocked | rejected
-    ip: Mapped[str] = mapped_column(String(64), default="")
+    # indexed: the public ATS checker's per-IP daily quota counts rows by (event, ip, created_at)
+    ip: Mapped[str] = mapped_column(String(64), default="", index=True)
     meta: Mapped[dict] = mapped_column(JSON, default=dict)          # non-PII context only
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

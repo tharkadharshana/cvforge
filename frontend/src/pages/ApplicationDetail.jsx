@@ -118,8 +118,8 @@ export function CritiquePanel({ critique }) {
           <Banner kind="ok">Meets your plan's {target}% ATS guarantee (score {critique.ats_score}%).</Banner>
         ) : (
           <Banner kind="error">
-            Couldn't reach your plan's {target}% ATS guarantee after {critique.ats_iterations || 1} attempt(s)
-            (score {critique.ats_score}%). Add the missing keywords below, then hit "Improve" to try again.
+            Couldn't reach your plan's {target}% ATS guarantee (score {critique.ats_score}%).
+            Add the missing keywords below, then hit "Improve" to try again.
           </Banner>
         )
       )}
