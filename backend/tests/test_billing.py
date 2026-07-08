@@ -35,7 +35,10 @@ def _signed(payload: dict):
     wh = Webhook(secret)
     body = json.dumps(payload)
     msg_id = "msg_ci_test"
-    ts = datetime.datetime.now()
+    # must be aware-UTC: standardwebhooks' sign() stamps naive datetimes as UTC
+    # wall-clock, which desyncs the signed timestamp from ts.timestamp() header
+    # on any non-UTC machine and makes verification fail
+    ts = datetime.datetime.now(datetime.timezone.utc)
     sig = wh.sign(msg_id, ts, body)
     headers = {
         "webhook-id": msg_id,
