@@ -107,11 +107,6 @@ class Token(BaseModel):
 
 
 # ---------- cv ----------
-class BaseCVOut(BaseModel):
-    data: CVData
-    updated_at: Optional[str] = None
-
-
 class AddQualificationIn(BaseModel):
     # free text the user dumps; LLM slots it into the right section of base CV
     text: str = Field(min_length=3)
@@ -292,17 +287,3 @@ class AutofillProfile(BaseModel):
     cover_letter: str = ""
     cv_pdf_url: str = ""              # authenticated download URLs (need the same bearer token)
     cover_pdf_url: str = ""
-
-
-class ApplicationOut(BaseModel):
-    id: int
-    job_title: str = ""
-    company: str = ""
-    tailored_cv: Optional[CVData] = None
-    cover_letter: Optional[str] = None
-    ats_score: Optional[int] = None
-    critique: Optional[CritiqueOut] = None
-    ats_stale: bool = False
-    template_id: str = "ats_classic"
-    template_overrides: Optional[dict] = None
-    status: str
