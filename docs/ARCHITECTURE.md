@@ -59,7 +59,7 @@ frontend/
       Landing, Login, Register, Onboarding, BaseCV, Generate,
       Applications, ApplicationDetail, Billing
     components/
-      Layout.jsx, CVView.jsx, Questionnaire.jsx, ui.jsx
+      Layout.jsx, CVEditor.jsx, Questionnaire.jsx, TemplatePicker.jsx, ui.jsx
 ```
 
 ## Request flow (typical: tailor a CV)
