@@ -29,7 +29,7 @@ def fetch_job_text(url: str) -> tuple[str, str]:
         log.warning("fetch failed: %s", e)
         raise FetchError(f"Could not load the page ({e}). Paste the text instead.")
 
-    title, text = _extract(html)
+    title, text = _crude_strip(html)
     log.info("fetch extracted title=%r chars=%d", title[:60], len(text))
     if len(text) < 120:
         raise FetchError(
@@ -37,22 +37,6 @@ def fetch_job_text(url: str) -> tuple[str, str]:
             "common with LinkedIn). Open the posting, copy the description, and paste it."
         )
     return title, text
-
-
-def _extract(html: str) -> tuple[str, str]:
-    # prefer trafilatura (best main-content extraction); fall back to crude strip
-    try:
-        import trafilatura
-        extracted = trafilatura.extract(html, include_comments=False, include_tables=False) or ""
-        title = ""
-        m = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
-        if m:
-            title = re.sub(r"\s+", " ", m.group(1)).strip()
-        if extracted.strip():
-            return title, extracted.strip()
-    except Exception as e:
-        log.debug("trafilatura unavailable/failed: %s", e)
-    return _crude_strip(html)
 
 
 def _crude_strip(html: str) -> tuple[str, str]:
