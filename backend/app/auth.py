@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import bcrypt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
@@ -43,6 +43,17 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if not user:
         raise cred_exc
     return user
+
+
+def get_optional_user(request: Request, db: Session = Depends(get_db)) -> Optional[models.User]:
+    """Like get_current_user, but public endpoints: no/invalid token -> None, never 401."""
+    header = request.headers.get("authorization", "")
+    if not header.lower().startswith("bearer "):
+        return None
+    try:
+        return get_current_user(header.split(" ", 1)[1], db)
+    except HTTPException:
+        return None
 
 
 def _admin_emails() -> set[str]:
