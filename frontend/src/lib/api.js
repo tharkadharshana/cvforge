@@ -95,6 +95,26 @@ export const api = {
   searchJobs: (q, location = "", page = 1) =>
     req(`/jobs/search?q=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}&page=${page}`),
 
+  // public ATS checker (works logged out; token sent when present for paid detail)
+  atsCheck: async ({ file, rawText, jobDescription }) => {
+    const fd = new FormData();
+    if (file) fd.append("file", file);
+    if (rawText) fd.append("raw_text", rawText);
+    if (jobDescription) fd.append("job_description", jobDescription);
+    const headers = {};
+    const token = tokenStore.get();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/ats/check`, { method: "POST", headers, body: fd });
+    if (!res.ok) {
+      let detail = `${res.status}`;
+      try { detail = (await res.json()).detail || detail; } catch {}
+      const e = new Error(detail);
+      e.status = res.status;
+      throw e;
+    }
+    return res.json();
+  },
+
   downloadUrl: (id, doc, fmt) =>
     `${BASE}/applications/${id}/download?doc=${doc}&fmt=${fmt}`,
 };

@@ -6,6 +6,7 @@ import { ThemeProvider } from "./lib/theme";
 import { Protected } from "./components/ui";
 import Layout from "./components/Layout";
 import Landing from "./pages/Landing";
+import ATSCheck from "./pages/ATSCheck";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Onboarding from "./pages/Onboarding";
@@ -33,6 +34,7 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Landing />} />
+            <Route path="/ats-check" element={<ATSCheck />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route element={<Protected><Shell /></Protected>}>
