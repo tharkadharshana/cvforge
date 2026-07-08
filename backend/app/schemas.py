@@ -205,7 +205,6 @@ class CritiqueOut(BaseModel):
     suggestions: list[str] = []
     target_ats_score: int = 0
     meets_ats_guarantee: bool = True
-    ats_iterations: int = 1
 
 
 class GenerateOut(BaseModel):
