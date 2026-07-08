@@ -38,6 +38,23 @@ async function req(path, { method = "GET", body, form, auth = true } = {}) {
   return res.json();
 }
 
+// multipart POST: bearer header when a token exists, same error shape as req()
+async function reqForm(path, fd) {
+  const headers = {};
+  const token = tokenStore.get();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${BASE}${path}`, { method: "POST", headers, body: fd });
+  if (!res.ok) {
+    let detail = `${res.status}`;
+    try { detail = (await res.json()).detail || detail; } catch {}
+    if (res.status === 401) tokenStore.clear();
+    const e = new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    e.status = res.status;
+    throw e;
+  }
+  return res.json();
+}
+
 export const api = {
   base: BASE,
   register: (email, password, full_name) =>
@@ -52,21 +69,10 @@ export const api = {
   replaceCV: (data) => req("/cv", { method: "PUT", body: data }),
   addQualification: (text) => req("/cv/qualification", { method: "POST", body: { text } }),
 
-  importFile: async (file) => {
+  importFile: (file) => {
     const fd = new FormData();
     fd.append("file", file);
-    const res = await fetch(`${BASE}/cv/import-file`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tokenStore.get()}` },
-      body: fd,
-    });
-    if (!res.ok) {
-      let detail = `${res.status}`;
-      try { detail = (await res.json()).detail || detail; } catch {}
-      if (res.status === 401) tokenStore.clear();
-      throw new Error(detail);
-    }
-    return res.json();
+    return reqForm("/cv/import-file", fd);
   },
 
   startGeneration: (payload) => req("/generate/start", { method: "POST", body: payload }),
@@ -96,23 +102,12 @@ export const api = {
     req(`/jobs/search?q=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}&page=${page}`),
 
   // public ATS checker (works logged out; token sent when present for paid detail)
-  atsCheck: async ({ file, rawText, jobDescription }) => {
+  atsCheck: ({ file, rawText, jobDescription }) => {
     const fd = new FormData();
     if (file) fd.append("file", file);
     if (rawText) fd.append("raw_text", rawText);
     if (jobDescription) fd.append("job_description", jobDescription);
-    const headers = {};
-    const token = tokenStore.get();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(`${BASE}/ats/check`, { method: "POST", headers, body: fd });
-    if (!res.ok) {
-      let detail = `${res.status}`;
-      try { detail = (await res.json()).detail || detail; } catch {}
-      const e = new Error(detail);
-      e.status = res.status;
-      throw e;
-    }
-    return res.json();
+    return reqForm("/ats/check", fd);
   },
 
   downloadUrl: (id, doc, fmt) =>
