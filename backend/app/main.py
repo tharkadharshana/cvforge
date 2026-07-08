@@ -43,9 +43,12 @@ async def request_logger(request: Request, call_next):
     rid = uuid.uuid4().hex[:8]
     request_id_var.set(rid)
     client = request.client.host if request.client else "-"
-    # respect proxy-forwarded client IP (Render/Cloud Run sit behind proxies)
+    # respect proxy-forwarded client IP (Render/Cloud Run sit behind proxies).
+    # Use the LAST entry: it's appended by our trusted edge proxy, while earlier
+    # entries arrive in the client's own header and are trivially spoofable —
+    # taking the first would let anyone mint fresh IPs for per-IP rate limits.
     fwd = request.headers.get("x-forwarded-for", "")
-    client_ip_var.set(fwd.split(",")[0].strip() if fwd else client)
+    client_ip_var.set(fwd.split(",")[-1].strip() if fwd else client)
     t0 = time.perf_counter()
     log.info("-> %s %s from %s", request.method, request.url.path, client_ip_var.get())
     try:

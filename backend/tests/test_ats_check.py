@@ -80,6 +80,19 @@ def test_paid_user_gets_fixes_and_no_limit(client, monkeypatch):
     assert body["issues"][0]["fix"].startswith("Quantify")
 
 
+def test_spoofed_forwarded_for_cannot_reset_quota(client, monkeypatch):
+    """Only the last XFF entry (appended by the trusted proxy) counts; the
+    client-controlled first entries must not mint fresh rate-limit buckets."""
+    _mock_llm(monkeypatch)
+    for i in range(2):
+        r = client.post("/ats/check", data={"raw_text": CV_TEXT},
+                        headers={"x-forwarded-for": f"fake-{i}.example, 9.9.9.9"})
+        assert r.status_code == 200
+    r = client.post("/ats/check", data={"raw_text": CV_TEXT},
+                    headers={"x-forwarded-for": "fake-99.example, 9.9.9.9"})
+    assert r.status_code == 429
+
+
 def test_free_logged_in_user_still_limited(client, monkeypatch):
     _mock_llm(monkeypatch)
     H = auth_headers(client, email="free@test.com")  # trial plan, not paid
