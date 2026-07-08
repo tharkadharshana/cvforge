@@ -6,11 +6,13 @@ import { ThemeProvider } from "./lib/theme";
 import { Protected } from "./components/ui";
 import Layout from "./components/Layout";
 import Landing from "./pages/Landing";
+import ATSCheck from "./pages/ATSCheck";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Onboarding from "./pages/Onboarding";
 import BaseCV from "./pages/BaseCV";
 import Generate from "./pages/Generate";
+import Jobs from "./pages/Jobs";
 import Applications from "./pages/Applications";
 import ApplicationDetail from "./pages/ApplicationDetail";
 import Billing from "./pages/Billing";
@@ -32,12 +34,14 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Landing />} />
+            <Route path="/ats-check" element={<ATSCheck />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route element={<Protected><Shell /></Protected>}>
               <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/cv" element={<BaseCV />} />
               <Route path="/generate" element={<Generate />} />
+              <Route path="/jobs" element={<Jobs />} />
               <Route path="/applications" element={<Applications />} />
               <Route path="/applications/:id" element={<ApplicationDetail />} />
               <Route path="/billing" element={<Billing />} />

@@ -125,3 +125,18 @@ body {
   .rise, .floaty, .ringfill, .scan::after { animation: none !important; }
   .rise { opacity: 1 !important; transform: none !important; }
 }
+
+/* CV print-to-PDF: hide the whole app and show only the print root, which holds
+   the selected designer/ATS template rendered on a white page. */
+.cv-print-root { display: none; }
+@media print {
+  @page { size: A4; margin: 0; }
+  body { background: #fff !important; }
+  body * { visibility: hidden; }
+  .cv-print-root, .cv-print-root * { visibility: visible; }
+  .cv-print-root {
+    display: block !important;
+    position: absolute; left: 0; top: 0; width: 100%;
+    background: #fff;
+  }
+}

@@ -14,7 +14,7 @@ EVENTS = {
     "generate_start", "generate_tailor", "generate_cover", "generate_done",
     "generate_failed", "generate_improve", "checkout_started", "portal_opened",
     "webhook_received", "purchase", "subscription_canceled",
-    "admin_credit_adjust",
+    "admin_credit_adjust", "ats_check",
 }
 
 

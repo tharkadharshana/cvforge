@@ -37,6 +37,7 @@ export default function Landing() {
           <nav className="flex items-center gap-4">
             <a href="#how" className="label hover:text-fg transition-colors hidden sm:inline">How it works</a>
             <a href="#features" className="label hover:text-fg transition-colors hidden sm:inline">Features</a>
+            <Link to="/ats-check" className="label text-accent hover:text-fg transition-colors">Free ATS check</Link>
             <Link to="/login" className="label hover:text-fg transition-colors">Sign in</Link>
             <ThemeToggle />
             <Link to={primaryTo} className="btn-primary text-[11px] px-4 py-2">{primaryLabel}</Link>
@@ -59,7 +60,9 @@ export default function Landing() {
             <Link to={primaryTo} className="btn-primary px-6 py-3 text-[13px]">{primaryLabel} →</Link>
             <a href="#how" className="btn-ghost px-6 py-3 text-[13px]">See how it works</a>
           </div>
-          <p className="mt-4 label rise" style={{ animationDelay: ".22s" }}>No credit card · free to start</p>
+          <p className="mt-4 label rise" style={{ animationDelay: ".22s" }}>
+            No credit card · free to start · <Link to="/ats-check" className="text-accent hover:underline">check your current CV's ATS score free</Link>
+          </p>
         </div>
 
         <ForgeVisual />

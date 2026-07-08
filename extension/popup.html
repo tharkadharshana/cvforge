@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { width: 300px; font-family: system-ui, sans-serif; margin: 0; padding: 14px; background: #0b0b0c; color: #ededec; }
+      h1 { font-size: 15px; margin: 0 0 10px; }
+      label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #8c8c88; margin: 10px 0 4px; }
+      input { width: 100%; box-sizing: border-box; background: #141416; border: 1px solid #2a2a2e; color: #ededec; padding: 8px; font-size: 13px; }
+      button { width: 100%; margin-top: 12px; padding: 9px; border: 1px solid #ff5c35; background: #ff5c35; color: #0b0b0c; font-weight: 700; cursor: pointer; }
+      button.ghost { background: transparent; color: #ededec; border-color: #2a2a2e; }
+      .row { display: flex; gap: 8px; }
+      .row > * { flex: 1; }
+      .msg { margin-top: 10px; font-size: 12px; min-height: 16px; }
+      .ok { color: #7ee787; } .err { color: #ff6b6b; }
+      .hint { font-size: 11px; color: #8c8c88; margin-top: 6px; line-height: 1.4; }
+      a { color: #ff8a6b; }
+    </style>
+  </head>
+  <body>
+    <h1>CVForge Autofill</h1>
+
+    <label>API base URL</label>
+    <input id="apiBase" placeholder="https://your-backend.vercel.app" />
+
+    <label>Access token</label>
+    <input id="token" placeholder="Paste your CVForge token" />
+
+    <label>Application ID</label>
+    <input id="appId" placeholder="e.g. 42" />
+
+    <div class="row">
+      <button id="save" class="ghost">Save</button>
+      <button id="fill">Autofill this page</button>
+    </div>
+
+    <div id="msg" class="msg"></div>
+    <p class="hint">
+      This fills the form you're looking at. You review every field and click the site's own
+      Submit — nothing is submitted for you. Get your token from the CVForge web app
+      (browser localStorage key <code>cvforge_token</code>).
+    </p>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

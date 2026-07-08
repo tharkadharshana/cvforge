@@ -11,7 +11,7 @@ setup_logging()
 from .config import settings
 from .database import Base, engine
 from . import models  # noqa: F401  (register models)
-from .routers import auth, cv, generate, billing, jobs, admin
+from .routers import auth, cv, generate, billing, jobs, admin, ats
 
 log = get_logger("http")
 
@@ -90,6 +90,7 @@ app.include_router(generate.router)
 app.include_router(billing.router)
 app.include_router(jobs.router)
 app.include_router(admin.router)
+app.include_router(ats.router)
 
 
 @app.get("/health")

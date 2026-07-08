@@ -178,11 +178,28 @@ class FetchUrlOut(BaseModel):
     text: str
 
 
+class JobListing(BaseModel):
+    id: str = ""
+    title: str = ""
+    company: str = ""
+    location: str = ""
+    description: str = ""
+    url: str = ""
+    source: str = ""
+
+
+class JobSearchOut(BaseModel):
+    results: list[JobListing] = []
+    page: int = 1
+    enabled: bool = True
+
+
 # ---------- generation ----------
 class GenerateIn(BaseModel):
     job_description: str = Field(min_length=20)
     job_title: str = ""
     company: str = ""
+    template_id: str = "ats_classic"   # starting render template (see cv/templates.py)
 
 
 class CritiqueOut(BaseModel):
@@ -239,3 +256,53 @@ class GenerateJobOut(BaseModel):
     critique: Optional[CritiqueOut] = None
     ats_score: Optional[int] = None
     error: Optional[str] = None
+
+
+# ---------- manual editing & templates ----------
+class ApplicationPatchIn(BaseModel):
+    """Partial update of an application. Any field left None is untouched.
+
+    Editing ``tailored_cv`` marks the ATS score stale (the stored score no longer
+    reflects the CV) until the user re-evaluates. Setting only template fields does
+    not affect the score.
+    """
+    tailored_cv: Optional[CVData] = None
+    cover_letter: Optional[str] = None
+    template_id: Optional[str] = None
+    template_overrides: Optional[dict] = None
+
+
+class AutofillProfile(BaseModel):
+    """Flat, form-friendly view of a tailored CV for the browser autofill extension."""
+    full_name: str = ""
+    first_name: str = ""
+    last_name: str = ""
+    email: str = ""
+    phone: str = ""
+    location: str = ""
+    linkedin: str = ""
+    github: str = ""
+    website: str = ""
+    summary: str = ""
+    skills: list[str] = []
+    current_title: str = ""
+    current_company: str = ""
+    experience: list[dict] = []       # [{title, company, location, start, end}]
+    education: list[dict] = []        # [{degree, institution, start, end}]
+    cover_letter: str = ""
+    cv_pdf_url: str = ""              # authenticated download URLs (need the same bearer token)
+    cover_pdf_url: str = ""
+
+
+class ApplicationOut(BaseModel):
+    id: int
+    job_title: str = ""
+    company: str = ""
+    tailored_cv: Optional[CVData] = None
+    cover_letter: Optional[str] = None
+    ats_score: Optional[int] = None
+    critique: Optional[CritiqueOut] = None
+    ats_stale: bool = False
+    template_id: str = "ats_classic"
+    template_overrides: Optional[dict] = None
+    status: str

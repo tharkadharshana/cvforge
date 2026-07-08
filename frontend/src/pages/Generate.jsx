@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useNavigate, Navigate, Link } from "react-router-dom";
+import { useNavigate, Navigate, Link, useLocation } from "react-router-dom";
 import { api } from "../lib/api";
 import { useCVStatus } from "../lib/cvstatus";
 import { useCredits } from "../lib/credits";
 import { Banner, Spinner, ScoreGauge } from "../components/ui";
-import CVView from "../components/CVView";
+import TemplatePicker from "../components/TemplatePicker";
+import { renderTemplate, TEMPLATES } from "../templates/registry";
 import { DownloadBar, CritiquePanel, ImproveButton } from "./ApplicationDetail";
 
 const STEPS = [
@@ -38,12 +39,14 @@ function Stepper({ jobStatus, steps, onRetry, busy }) {
 
 export default function Generate() {
   const nav = useNavigate();
+  const loc = useLocation();
+  const prefill = loc.state || {};   // set when arriving from the Jobs page
   const { status, loading: stLoading } = useCVStatus();
   const { refresh: refreshCredits } = useCredits();
   const [url, setUrl] = useState("");
-  const [jd, setJd] = useState("");
-  const [company, setCompany] = useState("");
-  const [title, setTitle] = useState("");
+  const [jd, setJd] = useState(prefill.job_description || "");
+  const [company, setCompany] = useState(prefill.company || "");
+  const [title, setTitle] = useState(prefill.job_title || "");
   const [fetching, setFetching] = useState(false);
   const [fetchErr, setFetchErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -56,6 +59,10 @@ export default function Generate() {
   const [tailoredCv, setTailoredCv] = useState(null);
   const [coverLetter, setCoverLetter] = useState(null);
   const [critique, setCritique] = useState(null);
+  const [autoTuning, setAutoTuning] = useState(false);
+  const [templateId, setTemplateId] = useState("ats_classic");
+
+  const MAX_AUTO_RETRIES = 2; // free retries to honor the plan's ATS guarantee
 
   if (!stLoading && status && !status.has_base_cv) return <Navigate to="/onboarding" replace />;
 
@@ -69,7 +76,31 @@ export default function Generate() {
     finally { setFetching(false); }
   };
 
+  // Free, bounded auto-retries: if the score is below the plan's guarantee,
+  // re-run the improve pass (no credit charged for these) keeping the best result.
+  const autoTune = async (id, crit) => {
+    let best = crit;
+    if (!best || best.meets_ats_guarantee !== false) return best;
+    setAutoTuning(true);
+    try {
+      for (let i = 0; i < MAX_AUTO_RETRIES; i++) {
+        const r = await api.improveApplication(id, true);
+        setTailoredCv(r.tailored_cv);
+        setCoverLetter(r.cover_letter);
+        setCritique(r.critique);
+        best = r.critique;
+        if (best?.meets_ats_guarantee) break;
+      }
+    } catch {
+      // auto-tune is best-effort; keep whatever score we already have
+    } finally {
+      setAutoTuning(false);
+    }
+    return best;
+  };
+
   const runFrom = async (id, fromIndex) => {
+    let lastCrit = critique;
     for (let i = fromIndex; i < STEPS.length; i++) {
       const step = STEPS[i];
       setStepStatus((s) => ({ ...s, [step.key]: "running" }));
@@ -78,7 +109,7 @@ export default function Generate() {
         const r = await step.call(id);
         if (step.key === "tailor") setTailoredCv(r.tailored_cv);
         if (step.key === "cover") setCoverLetter(r.cover_letter);
-        if (step.key === "critique") setCritique(r.critique);
+        if (step.key === "critique") { setCritique(r.critique); lastCrit = r.critique; }
         setStepStatus((s) => ({ ...s, [step.key]: "done" }));
       } catch (e) {
         setStepStatus((s) => ({ ...s, [step.key]: "error" }));
@@ -87,6 +118,7 @@ export default function Generate() {
         return;
       }
     }
+    await autoTune(id, lastCrit);
     setBusy(false);
     refreshCredits();
   };
@@ -97,7 +129,7 @@ export default function Generate() {
     setStepStatus({}); setStepError({});
     let id;
     try {
-      const r = await api.startGeneration({ job_description: jd, company, job_title: title });
+      const r = await api.startGeneration({ job_description: jd, company, job_title: title, template_id: templateId });
       id = r.job_id;
       setJobId(id);
     } catch (e) {
@@ -149,6 +181,9 @@ export default function Generate() {
       <textarea className="field min-h-[220px] resize-y leading-relaxed" value={jd} onChange={(e) => setJd(e.target.value)}
         placeholder="Paste the full job description here…" />
 
+      <div className="label mt-4 mb-2">Template (you can change this any time later)</div>
+      <TemplatePicker value={templateId} onSelect={setTemplateId} busy={busy} />
+
       <div className="flex items-center justify-between mt-4 gap-3 flex-wrap">
         <div>{busy && !jobId && <Spinner label="Starting" />}</div>
         <button className="btn-primary" disabled={busy || jd.trim().length < 20} onClick={run}>
@@ -159,6 +194,9 @@ export default function Generate() {
       {jobId && (
         <div className="mt-5 panel p-5">
           <Stepper jobStatus={stepStatus} steps={STEPS} onRetry={retryStep} busy={busy} />
+          {autoTuning && (
+            <div className="mt-2"><Spinner label="Boosting ATS score to meet your plan guarantee (free)" /></div>
+          )}
           {Object.values(stepError).some(Boolean) && (
             <div className="mt-3"><Banner>{Object.values(stepError).find(Boolean)}</Banner></div>
           )}
@@ -183,14 +221,18 @@ export default function Generate() {
                 <ImproveButton applicationId={jobId} onImproved={(r) => {
                   setTailoredCv(r.tailored_cv); setCoverLetter(r.cover_letter); setCritique(r.critique);
                 }} />
-                <DownloadBar id={jobId} />
+                <DownloadBar id={jobId} onPrint={() => window.print()} designer={!(TEMPLATES[templateId] || TEMPLATES.ats_classic).ats_safe} />
               </div>
             </div>
           )}
           {critique && <CritiquePanel critique={critique} />}
           <div>
             <h2 className="label mb-2">Tailored CV</h2>
-            <div className="panel p-7"><CVView cv={tailoredCv} /></div>
+            <div className="panel p-4 overflow-x-auto">
+              <div style={{ transform: "scale(0.62)", transformOrigin: "top left", width: "210mm" }}>
+                {renderTemplate(templateId, tailoredCv)}
+              </div>
+            </div>
           </div>
           {coverLetter && (
             <div>
@@ -203,6 +245,7 @@ export default function Generate() {
               Open in history →
             </button>
           )}
+          <div className="cv-print-root">{renderTemplate(templateId, tailoredCv)}</div>
         </div>
       )}
     </div>

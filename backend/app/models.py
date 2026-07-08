@@ -53,6 +53,15 @@ class Application(Base):
     cover_letter: Mapped[str | None] = mapped_column(Text, nullable=True)
     ats_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     critique: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # True after the user hand-edits the tailored CV: the stored ats_score/critique
+    # no longer reflect the current CV, so the UI hides the score until re-evaluated.
+    ats_stale: Mapped[bool] = mapped_column(default=False)
+    # chosen render template (see cv/templates.py). "ats_classic" is the default,
+    # ATS-safe layout that also feeds the critic and the safe PDF/DOCX download.
+    template_id: Mapped[str] = mapped_column(String(50), default="ats_classic")
+    # optional per-application style tweaks (e.g. {"accent": "#0b5"}); shape is the
+    # template style-token dict, applied on top of the template's defaults.
+    template_overrides: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending|tailored|covered|done|failed
     charged: Mapped[bool] = mapped_column(default=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
