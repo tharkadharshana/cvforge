@@ -9,6 +9,7 @@ from ..cv import prompts
 from ..cv.extract import extract_text, UnsupportedFile
 from ..llm.orchestrator import critic
 from ..logging_config import get_logger, client_ip_var
+from ..errors import opaque_502
 
 router = APIRouter(prefix="/ats", tags=["ats"])
 log = get_logger("ats")
@@ -55,7 +56,7 @@ async def check(file: Optional[UploadFile] = File(None),
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             log.error("ats/check extract error: %s", e, exc_info=True)
-            raise HTTPException(status_code=400, detail=f"could not read file: {e}")
+            raise HTTPException(status_code=400, detail="Could not read file. Try a different file or paste the text instead.")
     else:
         text = raw_text.strip()
     if len(text) < MIN_CV_CHARS:
@@ -76,8 +77,7 @@ async def check(file: Optional[UploadFile] = File(None),
     try:
         crit = critic().complete_json(sys, usr)
     except Exception as e:
-        log.error("ats/check llm error: %s", e)
-        raise HTTPException(status_code=502, detail=f"ATS analysis failed: {e}")
+        raise opaque_502(log, "ATS analysis failed", e)
 
     categories = crit.get("categories") or {}
     categories = {k: categories.get(k) for k in CATEGORY_KEYS}

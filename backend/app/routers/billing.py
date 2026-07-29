@@ -64,7 +64,8 @@ def checkout(plan_id: str, user: models.User = Depends(get_current_user)):
     try:
         url = polar.create_checkout(plan, user)
     except RuntimeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        log.error("checkout config error: %s", e)
+        raise HTTPException(status_code=503, detail="Checkout isn't available right now. Try again later.")
     except Exception as e:
         log.error("checkout error: %s", e)
         raise HTTPException(status_code=502, detail="Could not start checkout. Try again.")

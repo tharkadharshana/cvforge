@@ -37,7 +37,7 @@ def test_search_surfaces_aggregator_errors(client, monkeypatch):
     H = auth_headers(client, email="jobs3@test.com")
     r = client.get("/jobs/search?q=python", headers=H)
     assert r.status_code == 502
-    assert "limit reached" in r.json()["detail"]
+    assert r.json()["detail"] == "Job board search failed. Please try again."
 
 
 def test_search_requires_auth(client):

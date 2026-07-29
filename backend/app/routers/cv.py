@@ -8,6 +8,7 @@ from ..schemas import CVData
 from ..cv import pipeline
 from ..cv.extract import extract_text, UnsupportedFile
 from ..logging_config import get_logger
+from ..errors import opaque_502
 
 router = APIRouter(prefix="/cv", tags=["base-cv"])
 log = get_logger("cv")
@@ -69,7 +70,7 @@ def import_raw_cv(payload: RawCVIn, db: Session = Depends(get_db), user: models.
     try:
         parsed = pipeline.parse_raw_cv(payload.raw_text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"CV parse failed: {e}")
+        raise opaque_502(log, "CV parse failed", e)
     bc = _get_or_create(db, user)
     bc.data = parsed.model_dump()
     db.commit()
@@ -92,12 +93,12 @@ async def import_file(file: UploadFile = File(...), db: Session = Depends(get_db
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         log.error("import_file extract error: %s", e, exc_info=True)
-        raise HTTPException(status_code=400, detail=f"could not read file: {e}")
+        raise HTTPException(status_code=400, detail="Could not read file. Try a different file or paste the text instead.")
     _require_credits(db, user, "cv_import_file")
     try:
         parsed = pipeline.parse_raw_cv(text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"CV parse failed: {e}")
+        raise opaque_502(log, "CV parse failed", e)
     bc = _get_or_create(db, user)
     bc.data = parsed.model_dump()
     db.commit()
@@ -115,7 +116,7 @@ def build_cv(payload: schemas.BuildIn, db: Session = Depends(get_db),
     try:
         built = pipeline.build_from_answers(payload.answers)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"CV build failed: {e}")
+        raise opaque_502(log, "CV build failed", e)
     bc = _get_or_create(db, user)
     bc.data = built.model_dump()
     db.commit()
@@ -146,7 +147,7 @@ def add_qualification(payload: schemas.AddQualificationIn, db: Session = Depends
     try:
         updated = pipeline.merge_qualification(current, payload.text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Merge failed: {e}")
+        raise opaque_502(log, "Merge failed", e)
     bc.data = updated.model_dump()
     db.commit()
     billing.charge_generation(db, user, ref="cv_qualification")

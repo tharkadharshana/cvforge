@@ -43,7 +43,7 @@ def test_search_surfaces_gemini_errors(client, monkeypatch):
     H = auth_headers(client, email="gemini3@test.com")
     r = client.get("/jobs/gemini/search?q=python", headers=H)
     assert r.status_code == 502
-    assert "boom" in r.json()["detail"]
+    assert r.json()["detail"] == "AI search failed. Please try again."
 
 
 def test_search_requires_auth(client):

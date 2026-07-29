@@ -8,6 +8,7 @@ from ..database import get_db
 from ..jobs.fetch import fetch_job_text, FetchError
 from ..jobs import aggregator, linkedin, gemini_search
 from ..logging_config import get_logger
+from ..errors import opaque_502
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 log = get_logger("jobs")
@@ -34,7 +35,7 @@ def search_jobs(q: str = Query(..., min_length=2), location: str = "", page: int
     try:
         results = aggregator.search(q.strip(), location.strip(), page)
     except aggregator.AggregatorError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise opaque_502(log, "Job board search failed", e)
     return schemas.JobSearchOut(results=results, page=page, enabled=True)
 
 
@@ -85,7 +86,7 @@ def linkedin_search(q: str = Query(..., min_length=2), location: str = "", start
     try:
         results = linkedin.search_jobs(q.strip(), location.strip(), start=start, time_filter=tpr, experience=exp)
     except linkedin.LinkedInError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise opaque_502(log, "Web listings search failed", e)
 
     limit = settings.linkedin_paid_results_per_search if billing.is_paid(user) else settings.linkedin_free_results_per_search
     results = results[:limit]
@@ -158,7 +159,7 @@ def get_linkedin_job(job_id: str, db: Session = Depends(get_db), user: models.Us
         try:
             detail = linkedin.get_job_detail(job_id)
         except linkedin.LinkedInError as e:
-            raise HTTPException(status_code=502, detail=str(e))
+            raise opaque_502(log, "Could not load job details", e)
         cached.description = detail["description"]
         cached.description_hash = detail["description_hash"]
         cached.criteria = detail["criteria"]
@@ -232,7 +233,7 @@ def gemini_job_search(q: str = Query(..., min_length=2), location: str = "",
     try:
         results = gemini_search.search_jobs(q.strip(), location.strip(), limit=limit)
     except gemini_search.GeminiSearchError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise opaque_502(log, "AI search failed", e)
 
     out = []
     for j in results:
