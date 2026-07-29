@@ -1,12 +1,14 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from .. import models, schemas, billing, audit
 from ..config import settings
 from ..database import get_db
 from ..auth import get_current_user
 from ..schemas import CVData
-from ..cv import pipeline, prompts, render, templates
+from ..cv import pipeline, prompts, render, templates, verify
 from ..llm.orchestrator import drafter, critic
 from ..logging_config import get_logger
 
@@ -41,6 +43,39 @@ def _fail(db: Session, user: models.User, job: models.Application, step: str, e:
 def list_templates():
     """The CV render template catalog (shared by the picker and the browser extension)."""
     return {"templates": templates.catalog(), "default": templates.DEFAULT_TEMPLATE_ID}
+
+
+@router.post("/generate/fit-score", response_model=schemas.FitScoreOut)
+def fit_score(payload: schemas.FitScoreIn, db: Session = Depends(get_db),
+              user: models.User = Depends(get_current_user)):
+    """Score a job description against the candidate's base CV before generation.
+
+    Free (no credit charge) — this is pre-generation triage, not content generation.
+    If job_id refers to an existing Application owned by the user, the result is
+    also persisted onto it for the application history.
+    """
+    has_cv = user.base_cv and user.base_cv.data.get("contact", {}).get("full_name")
+    if not has_cv:
+        raise HTTPException(status_code=400, detail="Set up your base CV first")
+
+    base = CVData.model_validate(user.base_cv.data)
+    try:
+        sys, usr = prompts.fit_score(base.model_dump(), payload.job_description)
+        result = critic().complete_json(sys, usr)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Fit scoring failed: {e}")
+
+    out = schemas.FitScoreOut(**result)
+    if payload.job_id is not None:
+        job = db.query(models.Application).filter(
+            models.Application.id == payload.job_id, models.Application.user_id == user.id
+        ).first()
+        if job:
+            job.fit_score = out.model_dump()
+            db.commit()
+    audit.record("fit_score", status="ok", user_id=user.id,
+                 meta={"score": out.score, "recommendation": out.recommendation})
+    return out
 
 
 @router.post("/generate/start", response_model=schemas.GenerateStartOut)
@@ -86,7 +121,8 @@ def tailor(job_id: int, db: Session = Depends(get_db), user: models.User = Depen
 
     base = CVData.model_validate(user.base_cv.data)
     try:
-        sys, usr = prompts.tailor_cv(base.model_dump(), job.job_description)
+        sys, usr = prompts.tailor_cv(base.model_dump(), job.job_description,
+                                      style=base.style_profile.model_dump(), fit=job.fit_score)
         tailored = CVData.model_validate(drafter().complete_json(sys, usr, pro=_TAILOR_PRO))
     except Exception as e:
         _fail(db, user, job, "tailor", e)
@@ -105,8 +141,10 @@ def cover(job_id: int, db: Session = Depends(get_db), user: models.User = Depend
     if job.status not in ("tailored", "covered", "failed") or not job.tailored_cv:
         raise HTTPException(status_code=409, detail=f"Job is '{job.status}', cannot run cover step")
 
+    style = CVData.model_validate(user.base_cv.data).style_profile.model_dump()
     try:
-        sys, usr = prompts.cover_letter(job.tailored_cv, job.job_description, job.company, job.job_title)
+        sys, usr = prompts.cover_letter(job.tailored_cv, job.job_description, job.company, job.job_title,
+                                         style=style, fit=job.fit_score)
         letter = drafter().complete(sys, usr).strip()
     except Exception as e:
         _fail(db, user, job, "cover", e)
@@ -247,15 +285,32 @@ def improve_application(app_id: int, auto: bool = False, db: Session = Depends(g
 
 
 @router.get("/applications")
-def list_applications(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    apps = db.query(models.Application).filter(
+def list_applications(tracker_status: str | None = None, db: Session = Depends(get_db),
+                      user: models.User = Depends(get_current_user)):
+    q = db.query(models.Application).filter(
         models.Application.user_id == user.id, models.Application.status == "done"
-    ).order_by(models.Application.created_at.desc()).all()
+    )
+    if tracker_status:
+        q = q.filter(models.Application.tracker_status == tracker_status)
+    apps = q.order_by(models.Application.created_at.desc()).all()
     return [
         {"id": a.id, "job_title": a.job_title, "company": a.company,
-         "ats_score": a.ats_score, "created_at": a.created_at.isoformat()}
+         "ats_score": a.ats_score, "created_at": a.created_at.isoformat(),
+         "tracker_status": a.tracker_status,
+         "tracker_updated_at": a.tracker_updated_at.isoformat() if a.tracker_updated_at else None}
         for a in apps
     ]
+
+
+@router.get("/applications/stats")
+def application_stats(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    rows = (
+        db.query(models.Application.tracker_status, func.count())
+        .filter(models.Application.user_id == user.id, models.Application.status == "done")
+        .group_by(models.Application.tracker_status)
+        .all()
+    )
+    return {status: count for status, count in rows}
 
 
 def _get_app(db: Session, user: models.User, app_id: int) -> models.Application:
@@ -277,7 +332,21 @@ def get_application(app_id: int, db: Session = Depends(get_db), user: models.Use
         "ats_stale": bool(a.ats_stale),
         "template_id": a.template_id or "ats_classic",
         "template_overrides": a.template_overrides,
+        "tracker_status": a.tracker_status,
+        "tracker_updated_at": a.tracker_updated_at.isoformat() if a.tracker_updated_at else None,
     }
+
+
+@router.patch("/applications/{app_id}/tracker")
+def patch_tracker_status(app_id: int, payload: schemas.TrackerPatchIn,
+                         db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    a = _get_app(db, user, app_id)
+    a.tracker_status = payload.tracker_status
+    a.tracker_updated_at = datetime.now(timezone.utc)
+    db.commit()
+    audit.record("application_tracker", status="ok", user_id=user.id,
+                 meta={"application_id": a.id, "tracker_status": a.tracker_status})
+    return get_application(app_id, db, user)
 
 
 @router.get("/applications/{app_id}/autofill-profile", response_model=schemas.AutofillProfile)
@@ -396,6 +465,24 @@ def reevaluate_application(app_id: int, db: Session = Depends(get_db),
                  meta={"application_id": a.id, "ats_score": a.ats_score,
                        "free": free, "credits_after": user.credits})
     return get_application(app_id, db, user)
+
+
+@router.get("/applications/{app_id}/verify")
+def verify_pdf(app_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Deterministic check that the rendered CV PDF's text layer is machine-readable,
+    combined with the keyword coverage already computed by the critique step. Free —
+    no LLM call, reuses the already-paid-for critique data."""
+    a = _get_app(db, user, app_id)
+    if a.status != "done" or not a.tailored_cv:
+        raise HTTPException(status_code=409, detail="Application is not complete yet")
+    cv = CVData.model_validate(a.tailored_cv)
+    style = templates.resolve_style(a.template_id, a.template_overrides)
+    pdf_bytes = render.render_pdf(cv, style)
+    result = verify.verify_text_layer(pdf_bytes, cv)
+    crit = a.critique or {}
+    result["keyword_matches"] = crit.get("keyword_matches", [])
+    result["missing_keywords"] = crit.get("missing_keywords", [])
+    return result
 
 
 @router.get("/applications/{app_id}/download")

@@ -39,6 +39,45 @@ export function DownloadBar({ id, onPrint, designer }) {
   );
 }
 
+export function VerifyButton({ applicationId }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [err, setErr] = useState("");
+
+  const run = async () => {
+    setErr(""); setBusy(true);
+    try { setResult(await api.verifyApplicationPdf(applicationId)); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-2">
+      <button className="btn-ghost text-[11px] px-3 py-2" disabled={busy} onClick={run}>
+        {busy ? "Verifying…" : "🔍 Verify PDF"}
+      </button>
+      {err && <Banner>{err}</Banner>}
+      {result && (
+        <div className="panel p-4 space-y-2 text-right w-full sm:w-80">
+          <Banner kind={result.machine_readable ? "ok" : "error"}>
+            {result.machine_readable
+              ? "Text layer is machine-readable."
+              : `Text-layer issues: ${result.issues.join("; ")}`}
+          </Banner>
+          <div className="text-left">
+            <div className="label mb-1.5 text-good">Matched keywords</div>
+            <Chips items={result.keyword_matches} tone="good" />
+          </div>
+          <div className="text-left">
+            <div className="label mb-1.5 text-bad">Missing keywords</div>
+            <Chips items={result.missing_keywords} tone="bad" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ImproveButton({ applicationId, onImproved }) {
   const { refresh: refreshCredits } = useCredits();
   const [busy, setBusy] = useState(false);
@@ -97,7 +136,7 @@ export function ReevaluateButton({ applicationId, free, onDone }) {
   );
 }
 
-function Chips({ items, tone }) {
+export function Chips({ items, tone }) {
   if (!items?.length) return <span className="font-mono text-[12px] text-muted">none</span>;
   const cls = tone === "good" ? "border-good/40 text-good" : tone === "bad" ? "border-bad/40 text-bad" : "border-line2 text-muted";
   return (
@@ -230,6 +269,7 @@ export default function ApplicationDetail() {
           )}
           {!editing && <button className="btn-ghost text-[11px] px-3 py-2" onClick={() => setShowPicker((v) => !v)}>🎨 Template</button>}
           {!editing && <button className="btn-ghost text-[11px] px-3 py-2" onClick={startEdit}>✎ Edit CV</button>}
+          {!editing && <VerifyButton applicationId={app.id} />}
           <DownloadBar id={app.id} onPrint={printCV} designer={!tpl.ats_safe} />
         </div>
       </div>

@@ -75,18 +75,25 @@ export const api = {
     return reqForm("/cv/import-file", fd);
   },
 
+  fitScore: (job_description, job_id) =>
+    req("/generate/fit-score", { method: "POST", body: { job_description, job_id } }),
   startGeneration: (payload) => req("/generate/start", { method: "POST", body: payload }),
   tailor: (jobId) => req(`/generate/${jobId}/tailor`, { method: "POST" }),
   cover: (jobId) => req(`/generate/${jobId}/cover`, { method: "POST" }),
   critique: (jobId) => req(`/generate/${jobId}/critique`, { method: "POST" }),
   getJob: (jobId) => req(`/generate/${jobId}`),
-  listApplications: () => req("/applications"),
+  listApplications: (trackerStatus = "") =>
+    req(`/applications${trackerStatus ? `?tracker_status=${encodeURIComponent(trackerStatus)}` : ""}`),
+  applicationStats: () => req("/applications/stats"),
   getApplication: (id) => req(`/applications/${id}`),
+  updateTrackerStatus: (id, tracker_status) =>
+    req(`/applications/${id}/tracker`, { method: "PATCH", body: { tracker_status } }),
   improveApplication: (id, auto = false) =>
     req(`/applications/${id}/improve${auto ? "?auto=true" : ""}`, { method: "POST" }),
   // partial update: { tailored_cv?, cover_letter?, template_id?, template_overrides? }
   patchApplication: (id, patch) => req(`/applications/${id}`, { method: "PATCH", body: patch }),
   reevaluateApplication: (id) => req(`/applications/${id}/reevaluate`, { method: "POST" }),
+  verifyApplicationPdf: (id) => req(`/applications/${id}/verify`),
   listTemplates: () => req("/templates"),
 
   // billing

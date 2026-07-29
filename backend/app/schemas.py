@@ -1,6 +1,6 @@
 from __future__ import annotations
 import typing
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
@@ -73,6 +73,14 @@ class Project(CoerceModel):
     link: str = ""
 
 
+class StyleProfile(CoerceModel):
+    """User-declared writing preferences, spliced into the tailor/cover prompts."""
+    tone: str = ""
+    dos: list[str] = []
+    donts: list[str] = []
+    avoid_phrases: list[str] = []
+
+
 class CVData(CoerceModel):
     contact: Contact = Field(default_factory=Contact)
     summary: str = ""
@@ -83,6 +91,7 @@ class CVData(CoerceModel):
     certifications: list[str] = []
     awards: list[str] = []
     languages: list[str] = []
+    style_profile: StyleProfile = Field(default_factory=StyleProfile)
 
 
 # ---------- auth ----------
@@ -188,6 +197,21 @@ class JobSearchOut(BaseModel):
     enabled: bool = True
 
 
+# ---------- job fit scoring ----------
+class FitScoreIn(BaseModel):
+    job_description: str = Field(min_length=20)
+    job_id: Optional[int] = None   # persist onto this Application if provided
+
+
+class FitScoreOut(BaseModel):
+    score: int = 0
+    dimensions: dict[str, int] = {}
+    deal_breakers: list[str] = []
+    strengths: list[str] = []
+    gaps: list[str] = []
+    recommendation: str = "GOOD_MATCH"
+
+
 # ---------- generation ----------
 class GenerateIn(BaseModel):
     job_description: str = Field(min_length=20)
@@ -249,6 +273,17 @@ class GenerateJobOut(BaseModel):
     critique: Optional[CritiqueOut] = None
     ats_score: Optional[int] = None
     error: Optional[str] = None
+
+
+# ---------- application tracker ----------
+TrackerStatus = Literal[
+    "not_applied", "applied", "screening", "interview_1", "interview_2",
+    "offer", "hired", "rejected", "withdrawn", "ghosted",
+]
+
+
+class TrackerPatchIn(BaseModel):
+    tracker_status: TrackerStatus
 
 
 # ---------- manual editing & templates ----------

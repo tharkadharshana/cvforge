@@ -53,13 +53,55 @@ def build_from_answers(answers: dict) -> tuple[str, str]:
     return system, user
 
 
-def tailor_cv(base_cv: dict, job_description: str) -> tuple[str, str]:
+def _style_block(style: dict | None) -> str:
+    """Format a user's declared writing-style preferences for splicing into a system prompt.
+
+    Returns "" when the profile is empty so callers can unconditionally append it.
+    """
+    if not style:
+        return ""
+    tone = style.get("tone") or ""
+    dos = style.get("dos") or []
+    donts = style.get("donts") or []
+    avoid = style.get("avoid_phrases") or []
+    if not (tone or dos or donts or avoid):
+        return ""
+    parts = []
+    if tone:
+        parts.append(f"tone={tone}")
+    if dos:
+        parts.append("always: " + "; ".join(dos))
+    if donts:
+        parts.append("never: " + "; ".join(donts))
+    if avoid:
+        parts.append("avoid these phrases entirely: " + ", ".join(avoid))
+    return " Writing style rules (follow strictly): " + "; ".join(parts) + "."
+
+
+def _fit_block(fit: dict | None) -> str:
+    """Format a job-fit evaluation's strengths/gaps for splicing into a system prompt."""
+    if not fit:
+        return ""
+    strengths = fit.get("strengths") or []
+    gaps = fit.get("gaps") or []
+    if not (strengths or gaps):
+        return ""
+    parts = []
+    if strengths:
+        parts.append("lean into: " + "; ".join(strengths))
+    if gaps:
+        parts.append("the role also needs (address only where genuinely supported by the source, never fabricate): " + "; ".join(gaps))
+    return " Fit analysis: " + "; ".join(parts) + "."
+
+
+def tailor_cv(base_cv: dict, job_description: str, style: dict | None = None, fit: dict | None = None) -> tuple[str, str]:
     system = (
         "You are an expert resume writer producing an ATS-optimised, single-column CV tailored to a specific job. "
         "Select and prioritise the most relevant experience, projects and skills from the candidate's master CV. "
         "Mirror the job description's keywords and terminology where the candidate genuinely has the skill. "
         "Rewrite bullets in strong action-verb + impact form, quantified where the source supports it. "
         "Keep it concise (most relevant experience first, trim irrelevant items). " + NO_FABRICATION + " Output JSON only."
+        + _style_block(style) + _fit_block(fit)
     )
     user = (
         f"{CV_SCHEMA_HINT}\n\nCandidate master CV JSON:\n{json.dumps(base_cv, ensure_ascii=False)}\n\n"
@@ -69,12 +111,14 @@ def tailor_cv(base_cv: dict, job_description: str) -> tuple[str, str]:
     return system, user
 
 
-def cover_letter(tailored_cv: dict, job_description: str, company: str, job_title: str) -> tuple[str, str]:
+def cover_letter(tailored_cv: dict, job_description: str, company: str, job_title: str,
+                  style: dict | None = None, fit: dict | None = None) -> tuple[str, str]:
     system = (
         "You write cover letters that read as genuinely human-written: natural, specific, confident but not "
         "boastful, no clichés ('I am writing to express my interest', 'team player', 'fast-paced environment'), "
         "no em-dash overuse, varied sentence length. 3-4 short paragraphs. Tie concrete achievements to the role. "
         + NO_FABRICATION + " Output plain text only, no markdown."
+        + _style_block(style) + _fit_block(fit)
     )
     user = (
         f"Candidate (tailored) CV JSON:\n{json.dumps(tailored_cv, ensure_ascii=False)}\n\n"
@@ -152,6 +196,35 @@ def ats_check(cv_text: str, job_description: str = "") -> tuple[str, str]:
         "seniority = whether content signals a clear seniority level; "
         "tailoring = keyword match against the job description."
         f"{jd_part}\n\nResume text:\n\"\"\"\n{cv_text}\n\"\"\""
+    )
+    return system, user
+
+
+def fit_score(base_cv: dict, job_description: str) -> tuple[str, str]:
+    """Score a job description against the candidate's master CV, pre-generation.
+
+    Rubric adapted from github.com/MadsLorentzen/ai-job-search's job-evaluation skill:
+    5 weighted dimensions, deal-breakers cap the score, always surface gaps honestly.
+    """
+    system = (
+        "You are a strict, honest career advisor evaluating whether a candidate should apply to a job. "
+        "Score across 5 weighted dimensions and never hide genuine gaps to make a job look better. "
+        "Output JSON only."
+    )
+    user = (
+        "Return JSON exactly:\n"
+        "{\"score\": int 0-100 overall weighted score,\n"
+        " \"dimensions\": {\"skills_match\": int, \"experience_level\": int, \"culture_fit\": int, "
+        "\"location\": int, \"career_alignment\": int},\n"
+        " \"deal_breakers\": [\"hard requirements the candidate cannot meet\"],\n"
+        " \"strengths\": [\"top reasons this is a good fit\"],\n"
+        " \"gaps\": [\"honest gaps — never hide these\"],\n"
+        " \"recommendation\": one of \"STRONG_MATCH\"|\"GOOD_MATCH\"|\"WEAK_MATCH\"|\"SKIP\"}\n\n"
+        "Weights: skills_match 0.35, experience_level 0.25, culture_fit 0.15, location 0.15, "
+        "career_alignment 0.10 — weigh them holistically into the overall score. "
+        "If deal_breakers is non-empty, cap the overall score at 30 and set recommendation to SKIP.\n\n"
+        f"Candidate master CV JSON:\n{json.dumps(base_cv, ensure_ascii=False)}\n\n"
+        f"Job description:\n\"\"\"\n{job_description}\n\"\"\""
     )
     return system, user
 

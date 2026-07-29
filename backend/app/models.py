@@ -63,9 +63,16 @@ class Application(Base):
     # template style-token dict, applied on top of the template's defaults.
     template_overrides: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending|tailored|covered|done|failed
+    # job-fit evaluation (see cv/prompts.py::fit_score) computed pre-generation and
+    # persisted here once a job exists, for the application history's record.
+    fit_score: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     charged: Mapped[bool] = mapped_column(default=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # application tracker (separate from the `status` pipeline field above).
+    # not_applied|applied|screening|interview_1|interview_2|offer|hired|rejected|withdrawn|ghosted
+    tracker_status: Mapped[str] = mapped_column(String(20), default="not_applied")
+    tracker_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="applications")
 

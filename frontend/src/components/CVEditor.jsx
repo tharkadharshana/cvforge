@@ -11,6 +11,7 @@ export const emptyCV = {
   contact: { full_name: "", email: "", phone: "", location: "", linkedin: "", github: "", website: "" },
   summary: "", skills: {}, experience: [], projects: [], education: [],
   certifications: [], awards: [], languages: [],
+  style_profile: { tone: "", dos: [], donts: [], avoid_phrases: [] },
 };
 
 /**
@@ -102,6 +103,23 @@ export default function CVEditor({ cv, onChange, rev = 0 }) {
       <Card title="Languages">
         <CommaInput key={`languages-${rev}`} className="field" value={cv.languages}
           onChange={(arr) => set({ languages: arr })} placeholder="comma separated" />
+      </Card>
+
+      <Card title="Writing style">
+        <div className="space-y-2">
+          <input className="field" value={cv.style_profile?.tone || ""}
+            onChange={(e) => set({ style_profile: { ...cv.style_profile, tone: e.target.value } })}
+            placeholder="Tone (e.g. formal, conversational, technical)" />
+          <textarea className="field min-h-[60px]" value={(cv.style_profile?.dos || []).join("\n")}
+            onChange={(e) => set({ style_profile: { ...cv.style_profile, dos: splitLines(e.target.value) } })}
+            placeholder="Always do — one per line (e.g. Use specific numbers and metrics)" />
+          <textarea className="field min-h-[60px]" value={(cv.style_profile?.donts || []).join("\n")}
+            onChange={(e) => set({ style_profile: { ...cv.style_profile, donts: splitLines(e.target.value) } })}
+            placeholder="Never do — one per line (e.g. Clichés like 'team player')" />
+          <CommaInput key={`avoid-${rev}`} className="field" value={cv.style_profile?.avoid_phrases}
+            onChange={(arr) => set({ style_profile: { ...cv.style_profile, avoid_phrases: arr } })}
+            placeholder="Phrases to never use (comma separated)" />
+        </div>
       </Card>
     </div>
   );

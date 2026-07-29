@@ -46,6 +46,9 @@ One row per `/generate` call — a tailored CV + cover letter for one job.
 | cover_letter | TEXT | |
 | ats_score | INTEGER | 0-100 from critic LLM |
 | critique | JSON | `CritiqueOut` shape |
+| fit_score | JSON NULL | job-fit evaluation (see `POST /generate/fit-score`), persisted when computed against this job |
+| tracker_status | VARCHAR(20) | application tracker state, default `not_applied`; independent of the pipeline `status` column below |
+| tracker_updated_at | DATETIME NULL | stamped on every tracker status change |
 | created_at | DATETIME | |
 
 ### `credit_ledger`
@@ -113,7 +116,8 @@ Durable log of meaningful actions (auth, CV edits, generations, billing, admin).
   ],
   "certifications": ["..."],
   "awards": ["..."],
-  "languages": ["..."]
+  "languages": ["..."],
+  "style_profile": { "tone": "", "dos": ["..."], "donts": ["..."], "avoid_phrases": ["..."] }
 }
 ```
 

@@ -41,7 +41,10 @@ def merge_qualification(current: CVData, new_text: str) -> CVData:
     log.info("merge_qualification: %d chars", len(new_text))
     sys, usr = prompts.add_qualification(current.model_dump(), new_text)
     data = _stage("merge_qual", lambda: drafter().complete_json(sys, usr))
-    return CVData.model_validate(data)
+    updated = CVData.model_validate(data)
+    # style_profile isn't part of CV_SCHEMA_HINT, so the LLM never echoes it back — carry it over.
+    updated.style_profile = current.style_profile
+    return updated
 
 
 def annotate_ats_guarantee(crit: dict, min_ats_score: int) -> dict:
