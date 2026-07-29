@@ -46,6 +46,38 @@ Body: full `CVData` object — direct structured edit / manual save (overwrites 
 Body: `{ "text": str (min 3) }` — free-text dump of a new qualification/experience;
 LLM merges it into the existing base CV.
 
+`CVData` also carries a `style_profile` (`{ tone, dos, donts, avoid_phrases }`) —
+user-declared writing preferences, edited via `PUT /cv` like the rest of the base
+CV. Spliced into the `tailor_cv`/`cover_letter` system prompts when present.
+
+---
+
+## Job fit scoring
+
+### `POST /generate/fit-score`
+
+Body: `{ "job_description": str (min 20), "job_id": int | null }`
+
+Scores a job description against the user's base CV across 5 weighted
+dimensions before generation starts. Free — no credit charge. If `job_id`
+refers to an existing `Application` owned by the user, the result is also
+persisted onto `applications.fit_score`.
+
+Returns:
+```json
+{
+  "score": 0,
+  "dimensions": { "skills_match": 0, "experience_level": 0, "culture_fit": 0, "location": 0, "career_alignment": 0 },
+  "deal_breakers": [],
+  "strengths": [],
+  "gaps": [],
+  "recommendation": "STRONG_MATCH | GOOD_MATCH | WEAK_MATCH | SKIP"
+}
+```
+Deal-breakers cap `score` at 30 and force `recommendation: "SKIP"`. When a
+job's `fit_score` is already stored, `tailor`/`cover` splice its
+strengths/gaps into their prompts. Errors: `400` no base CV, `502` LLM failure.
+
 ---
 
 ## Generation (`/generate`, `/applications`)
@@ -76,11 +108,37 @@ Returns:
 ```
 Errors: `400` no base CV, `402` out of credits, `502` LLM failure.
 
-### `GET /applications`
-List of past applications (id, job_title, company, ats_score, created_at), newest first.
+### `GET /applications?tracker_status=`
+List of past applications (id, job_title, company, ats_score, created_at,
+tracker_status, tracker_updated_at), newest first. Optional `tracker_status`
+query param filters to one status.
+
+### `GET /applications/stats`
+`{ status: count, ... }` — counts of the caller's applications grouped by
+`tracker_status`.
 
 ### `GET /applications/{app_id}`
-Full record: tailored_cv, cover_letter, ats_score, critique.
+Full record: tailored_cv, cover_letter, ats_score, critique, tracker_status.
+
+### `PATCH /applications/{app_id}/tracker`
+Body: `{ "tracker_status": str }` — one of `not_applied`, `applied`,
+`screening`, `interview_1`, `interview_2`, `offer`, `hired`, `rejected`,
+`withdrawn`, `ghosted`. Separate from the generation pipeline's internal
+`status` field (`pending|tailored|covered|done|failed`) — this only tracks
+what happened after the CV was sent. Stamps `tracker_updated_at`.
+
+### `GET /applications/{app_id}/verify`
+Deterministic (non-LLM) check that the rendered CV PDF's text layer is
+machine-readable: contact details present as literal text, no garbled
+characters, section headings in the expected order. Combined with the
+keyword coverage already computed by the critique step. Free — no credit
+charge, reuses `pdfplumber` (already a dependency) instead of poppler/pdftotext.
+
+Returns:
+
+```json
+{ "machine_readable": true, "issues": [], "keyword_matches": [], "missing_keywords": [] }
+```
 
 ### `GET /applications/{app_id}/download?doc=cv|cover&fmt=pdf|docx`
 Streams the rendered file (`Content-Disposition: attachment`).
