@@ -49,8 +49,24 @@ def create_portal_session(customer_id: str) -> str:
     return data.get("customer_portal_url") or data.get("url", "")
 
 
+def _webhook_secret_bytes(secret: str) -> bytes:
+    """Polar issues secrets as `polar_whs_<base64url, no padding>` — the standardwebhooks
+    library only auto-strips the generic `whsec_` prefix and expects standard (non-urlsafe)
+    base64, so Webhook(raw_secret) fails to parse a genuine Polar secret. Strip whichever
+    known prefix is present and urlsafe-decode (a strict superset of standard base64 — it
+    only remaps '-'/'_', so a whsec_-style standard-base64 secret, e.g. in tests, still
+    decodes the same way)."""
+    import base64
+    for prefix in ("whsec_", "polar_whs_"):
+        if secret.startswith(prefix):
+            secret = secret[len(prefix):]
+            break
+    padded = secret + "=" * (-len(secret) % 4)
+    return base64.urlsafe_b64decode(padded)
+
+
 def verify_webhook(body: bytes, headers: dict) -> dict:
     """Verify Standard Webhooks signature using the official library. Raises on any failure (fail closed)."""
     from standardwebhooks import Webhook
-    wh = Webhook(settings.polar_webhook_secret)
+    wh = Webhook(_webhook_secret_bytes(settings.polar_webhook_secret))
     return wh.verify(body, headers)  # returns parsed dict; raises if signature/timestamp invalid

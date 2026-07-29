@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, Integer, DateTime, ForeignKey, Text, JSON, func
+from sqlalchemy import String, Integer, DateTime, ForeignKey, Text, JSON, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -105,6 +105,62 @@ class Payment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="payments")
+
+
+class LinkedInJobCache(Base):
+    """Shared cache of LinkedIn listings, keyed by LinkedIn's own job id — not
+    per-user (the listing itself is public data). See app/jobs/linkedin.py."""
+    __tablename__ = "linkedin_jobs_cache"
+
+    job_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    company: Mapped[str] = mapped_column(String(255), default="")
+    location: Mapped[str] = mapped_column(String(255), default="")
+    posted_at: Mapped[str] = mapped_column(String(40), default="")
+    url: Mapped[str] = mapped_column(String(500), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    description_hash: Mapped[str] = mapped_column(String(64), default="")
+    criteria: Mapped[dict] = mapped_column(JSON, default=dict)
+    cached_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class JobSearchPreference(Base):
+    __tablename__ = "job_search_preferences"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    keywords: Mapped[list] = mapped_column(JSON, default=list)   # ["backend engineer", ...]
+    location: Mapped[str] = mapped_column(String(255), default="")
+    experience_level: Mapped[str] = mapped_column(String(20), default="")  # see linkedin.EXPERIENCE_LEVELS
+    time_filter: Mapped[str] = mapped_column(String(20), default="week")   # see linkedin.TIME_FILTERS
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class JobSearchResult(Base):
+    """Links a user to a cached listing they've seen, so save/dismiss state is per-user
+    even though the underlying listing (LinkedInJobCache) is shared."""
+    __tablename__ = "job_search_results"
+    __table_args__ = (UniqueConstraint("user_id", "job_id", name="uq_job_search_results_user_job"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("linkedin_jobs_cache.job_id"), index=True)
+    search_keywords: Mapped[str] = mapped_column(String(255), default="")
+    saved: Mapped[bool] = mapped_column(default=False)
+    dismissed: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class JobSearchUsage(Base):
+    """Per-day search count for the free-tier daily limit. Date-based, not a sliding
+    window — resets at UTC midnight. Good enough at this volume."""
+    __tablename__ = "job_search_usage"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_job_search_usage_user_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    date: Mapped[str] = mapped_column(String(10))  # "YYYY-MM-DD", UTC
+    search_count: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class AuditEvent(Base):

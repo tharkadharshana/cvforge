@@ -191,6 +191,47 @@ class JobListing(BaseModel):
     source: str = ""
 
 
+class LinkedInJobOut(BaseModel):
+    job_id: str
+    title: str = ""
+    company: str = ""
+    location: str = ""
+    posted_at: str = ""
+    url: str = ""
+    saved: bool = False
+    dismissed: bool = False
+
+
+class LinkedInSearchOut(BaseModel):
+    jobs: list[LinkedInJobOut] = []
+    searches_remaining_today: int | None = None  # None = unlimited (paid)
+
+
+class LinkedInJobDetailOut(BaseModel):
+    job_id: str
+    title: str = ""
+    company: str = ""
+    location: str = ""
+    url: str = ""
+    description: str = ""
+    criteria: dict[str, str] = {}
+
+
+class LinkedInActionIn(BaseModel):
+    action: Literal["save", "dismiss", "unsave", "undismiss"]
+
+
+class LinkedInPreferencesIn(BaseModel):
+    keywords: list[str] = []
+    location: str = ""
+    experience_level: Literal["", "entry", "mid_senior", "senior", "director"] = ""
+    time_filter: Literal["any", "day", "week", "month"] = "week"
+
+
+class LinkedInPreferencesOut(LinkedInPreferencesIn):
+    pass
+
+
 class JobSearchOut(BaseModel):
     results: list[JobListing] = []
     page: int = 1
