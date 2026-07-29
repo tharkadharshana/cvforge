@@ -21,6 +21,8 @@ export default function JobSearch() {
   const [jobs, setJobs] = useState(null);
   const [linkedinRemaining, setLinkedinRemaining] = useState(null);
   const [geminiRemaining, setGeminiRemaining] = useState(null);
+  const [linkedinError, setLinkedinError] = useState("");
+  const [geminiError, setGeminiError] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [expandedKey, setExpandedKey] = useState(null);
@@ -31,7 +33,7 @@ export default function JobSearch() {
 
   const run = async () => {
     if (q.trim().length < 2) return;
-    setErr(""); setBusy(true); setExpandedKey(null); setDetail(null);
+    setErr(""); setLinkedinError(""); setGeminiError(""); setBusy(true); setExpandedKey(null); setDetail(null);
 
     const [li, gm] = await Promise.allSettled([
       api.linkedinSearch({ q: q.trim(), location: loc.trim() }),
@@ -44,21 +46,19 @@ export default function JobSearch() {
       setLinkedinRemaining(li.value.searches_remaining_today);
     } else {
       setLinkedinRemaining(null);
+      // 404 = feature disabled server-side, not an error worth surfacing
+      if (li.reason?.status !== 404) setLinkedinError(li.reason?.message || "LinkedIn search failed.");
     }
     if (gm.status === "fulfilled") {
       merged.push(...gm.value.jobs.map((j) => ({ ...j, source: "gemini" })));
       setGeminiRemaining(gm.value.enabled ? gm.value.searches_remaining_today : null);
     } else {
       setGeminiRemaining(null);
+      setGeminiError(gm.reason?.message || "AI search failed.");
     }
 
     merged.sort((a, b) => postedAtMs(b) - postedAtMs(a));
     setJobs(merged);
-
-    // both sources failed outright (not just disabled/empty) -- surface the error
-    if (li.status === "rejected" && gm.status === "rejected") {
-      setErr(li.reason?.message || gm.reason?.message || "Job search failed.");
-    }
     setBusy(false);
   };
 
@@ -118,6 +118,8 @@ export default function JobSearch() {
       </div>
 
       {err && <div className="mt-4"><Banner>{err}</Banner></div>}
+      {linkedinError && <div className="mt-4"><Banner>LinkedIn: {linkedinError}</Banner></div>}
+      {geminiError && <div className="mt-4"><Banner>AI search: {geminiError}</Banner></div>}
       {busy && <div className="mt-4"><Spinner label="Searching listings" /></div>}
 
       {jobs && (
