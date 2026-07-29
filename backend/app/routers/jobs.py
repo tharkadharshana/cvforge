@@ -6,7 +6,7 @@ from ..auth import get_current_user
 from ..config import settings
 from ..database import get_db
 from ..jobs.fetch import fetch_job_text, FetchError
-from ..jobs import aggregator, linkedin
+from ..jobs import aggregator, linkedin, gemini_search
 from ..logging_config import get_logger
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -177,6 +177,105 @@ def patch_linkedin_job_action(job_id: str, payload: schemas.LinkedInActionIn, db
         if not db.get(models.LinkedInJobCache, job_id):
             raise HTTPException(status_code=404, detail="Job not found (search for it first)")
         row = models.JobSearchResult(user_id=user.id, job_id=job_id, saved=False, dismissed=False)
+        db.add(row)
+    if payload.action == "save":
+        row.saved = True
+    elif payload.action == "unsave":
+        row.saved = False
+    elif payload.action == "dismiss":
+        row.dismissed = True
+    elif payload.action == "undismiss":
+        row.dismissed = False
+    db.commit()
+    return {"job_id": job_id, "saved": row.saved, "dismissed": row.dismissed}
+
+
+# ---------------------------------------------------------------------------
+# Gemini job discovery (google_search grounding tool). Auto-enabled whenever a
+# Gemini key is configured -- legitimate use of Google's own search API, no
+# ToS risk like the LinkedIn scraper, so no opt-in flag / 404 gate here.
+# Kept on its own quota counter and cache table, independent from LinkedIn's.
+# ---------------------------------------------------------------------------
+
+def _check_and_bump_gemini_quota(db: Session, user: models.User) -> int | None:
+    """Returns searches remaining today, or None if unlimited (paid plan).
+    Raises 429 if the free daily limit is already used up."""
+    if billing.is_paid(user):
+        return None
+    today = _today()
+    row = db.query(models.GeminiSearchUsage).filter(
+        models.GeminiSearchUsage.user_id == user.id, models.GeminiSearchUsage.date == today
+    ).first()
+    if not row:
+        row = models.GeminiSearchUsage(user_id=user.id, date=today, search_count=0)
+        db.add(row)
+    limit = settings.gemini_free_daily_searches
+    if row.search_count >= limit:
+        raise HTTPException(status_code=429, detail=f"Daily search limit reached ({limit}/day on the free plan).")
+    row.search_count += 1
+    db.commit()
+    return limit - row.search_count
+
+
+@router.get("/gemini/search", response_model=schemas.GeminiSearchOut)
+def gemini_job_search(q: str = Query(..., min_length=2), location: str = "",
+                      db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    if not gemini_search.enabled():
+        return schemas.GeminiSearchOut(jobs=[], searches_remaining_today=None, enabled=False)
+    remaining = _check_and_bump_gemini_quota(db, user)
+
+    limit = settings.gemini_paid_results_per_search if billing.is_paid(user) else settings.gemini_free_results_per_search
+    try:
+        results = gemini_search.search_jobs(q.strip(), location.strip(), limit=limit)
+    except gemini_search.GeminiSearchError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    out = []
+    for j in results:
+        cached = db.get(models.GeminiJobCache, j["job_id"])
+        if not cached:
+            cached = models.GeminiJobCache(job_id=j["job_id"])
+            db.add(cached)
+        cached.title, cached.company, cached.location, cached.posted_at, cached.url, cached.description = (
+            j["title"], j["company"], j["location"], j["posted_at"], j["url"], j["description"]
+        )
+
+        row = db.query(models.GeminiSearchResult).filter(
+            models.GeminiSearchResult.user_id == user.id, models.GeminiSearchResult.job_id == j["job_id"]
+        ).first()
+        if not row:
+            row = models.GeminiSearchResult(user_id=user.id, job_id=j["job_id"], search_keywords=q.strip(),
+                                            saved=False, dismissed=False)
+            db.add(row)
+        out.append(schemas.GeminiJobOut(
+            job_id=j["job_id"], title=j["title"], company=j["company"], location=j["location"],
+            posted_at=j["posted_at"], url=j["url"], saved=row.saved, dismissed=row.dismissed,
+        ))
+    db.commit()
+    return schemas.GeminiSearchOut(jobs=out, searches_remaining_today=remaining, enabled=True)
+
+
+@router.get("/gemini/{job_id}", response_model=schemas.GeminiJobDetailOut)
+def get_gemini_job(job_id: str, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    cached = db.get(models.GeminiJobCache, job_id)
+    if not cached:
+        raise HTTPException(status_code=404, detail="Job not found (search for it first)")
+    return schemas.GeminiJobDetailOut(
+        job_id=cached.job_id, title=cached.title, company=cached.company,
+        location=cached.location, url=cached.url, description=cached.description,
+    )
+
+
+@router.patch("/gemini/{job_id}/action")
+def patch_gemini_job_action(job_id: str, payload: schemas.GeminiActionIn, db: Session = Depends(get_db),
+                            user: models.User = Depends(get_current_user)):
+    row = db.query(models.GeminiSearchResult).filter(
+        models.GeminiSearchResult.user_id == user.id, models.GeminiSearchResult.job_id == job_id
+    ).first()
+    if not row:
+        if not db.get(models.GeminiJobCache, job_id):
+            raise HTTPException(status_code=404, detail="Job not found (search for it first)")
+        row = models.GeminiSearchResult(user_id=user.id, job_id=job_id, saved=False, dismissed=False)
         db.add(row)
     if payload.action == "save":
         row.saved = True
