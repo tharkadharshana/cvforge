@@ -93,6 +93,7 @@ export const api = {
   // partial update: { tailored_cv?, cover_letter?, template_id?, template_overrides? }
   patchApplication: (id, patch) => req(`/applications/${id}`, { method: "PATCH", body: patch }),
   reevaluateApplication: (id) => req(`/applications/${id}/reevaluate`, { method: "POST" }),
+  verifyApplicationPdf: (id) => req(`/applications/${id}/verify`),
   listTemplates: () => req("/templates"),
 
   // billing

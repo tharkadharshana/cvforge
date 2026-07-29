@@ -8,7 +8,7 @@ from ..config import settings
 from ..database import get_db
 from ..auth import get_current_user
 from ..schemas import CVData
-from ..cv import pipeline, prompts, render, templates
+from ..cv import pipeline, prompts, render, templates, verify
 from ..llm.orchestrator import drafter, critic
 from ..logging_config import get_logger
 
@@ -465,6 +465,24 @@ def reevaluate_application(app_id: int, db: Session = Depends(get_db),
                  meta={"application_id": a.id, "ats_score": a.ats_score,
                        "free": free, "credits_after": user.credits})
     return get_application(app_id, db, user)
+
+
+@router.get("/applications/{app_id}/verify")
+def verify_pdf(app_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Deterministic check that the rendered CV PDF's text layer is machine-readable,
+    combined with the keyword coverage already computed by the critique step. Free —
+    no LLM call, reuses the already-paid-for critique data."""
+    a = _get_app(db, user, app_id)
+    if a.status != "done" or not a.tailored_cv:
+        raise HTTPException(status_code=409, detail="Application is not complete yet")
+    cv = CVData.model_validate(a.tailored_cv)
+    style = templates.resolve_style(a.template_id, a.template_overrides)
+    pdf_bytes = render.render_pdf(cv, style)
+    result = verify.verify_text_layer(pdf_bytes, cv)
+    crit = a.critique or {}
+    result["keyword_matches"] = crit.get("keyword_matches", [])
+    result["missing_keywords"] = crit.get("missing_keywords", [])
+    return result
 
 
 @router.get("/applications/{app_id}/download")
