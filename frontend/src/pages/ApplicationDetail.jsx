@@ -97,7 +97,7 @@ export function ReevaluateButton({ applicationId, free, onDone }) {
   );
 }
 
-function Chips({ items, tone }) {
+export function Chips({ items, tone }) {
   if (!items?.length) return <span className="font-mono text-[12px] text-muted">none</span>;
   const cls = tone === "good" ? "border-good/40 text-good" : tone === "bad" ? "border-bad/40 text-bad" : "border-line2 text-muted";
   return (

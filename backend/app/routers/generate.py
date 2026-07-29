@@ -43,6 +43,39 @@ def list_templates():
     return {"templates": templates.catalog(), "default": templates.DEFAULT_TEMPLATE_ID}
 
 
+@router.post("/generate/fit-score", response_model=schemas.FitScoreOut)
+def fit_score(payload: schemas.FitScoreIn, db: Session = Depends(get_db),
+              user: models.User = Depends(get_current_user)):
+    """Score a job description against the candidate's base CV before generation.
+
+    Free (no credit charge) — this is pre-generation triage, not content generation.
+    If job_id refers to an existing Application owned by the user, the result is
+    also persisted onto it for the application history.
+    """
+    has_cv = user.base_cv and user.base_cv.data.get("contact", {}).get("full_name")
+    if not has_cv:
+        raise HTTPException(status_code=400, detail="Set up your base CV first")
+
+    base = CVData.model_validate(user.base_cv.data)
+    try:
+        sys, usr = prompts.fit_score(base.model_dump(), payload.job_description)
+        result = critic().complete_json(sys, usr)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Fit scoring failed: {e}")
+
+    out = schemas.FitScoreOut(**result)
+    if payload.job_id is not None:
+        job = db.query(models.Application).filter(
+            models.Application.id == payload.job_id, models.Application.user_id == user.id
+        ).first()
+        if job:
+            job.fit_score = out.model_dump()
+            db.commit()
+    audit.record("fit_score", status="ok", user_id=user.id,
+                 meta={"score": out.score, "recommendation": out.recommendation})
+    return out
+
+
 @router.post("/generate/start", response_model=schemas.GenerateStartOut)
 def start(payload: schemas.GenerateIn, db: Session = Depends(get_db),
           user: models.User = Depends(get_current_user)):
@@ -86,7 +119,8 @@ def tailor(job_id: int, db: Session = Depends(get_db), user: models.User = Depen
 
     base = CVData.model_validate(user.base_cv.data)
     try:
-        sys, usr = prompts.tailor_cv(base.model_dump(), job.job_description, style=base.style_profile.model_dump())
+        sys, usr = prompts.tailor_cv(base.model_dump(), job.job_description,
+                                      style=base.style_profile.model_dump(), fit=job.fit_score)
         tailored = CVData.model_validate(drafter().complete_json(sys, usr, pro=_TAILOR_PRO))
     except Exception as e:
         _fail(db, user, job, "tailor", e)
@@ -107,7 +141,8 @@ def cover(job_id: int, db: Session = Depends(get_db), user: models.User = Depend
 
     style = CVData.model_validate(user.base_cv.data).style_profile.model_dump()
     try:
-        sys, usr = prompts.cover_letter(job.tailored_cv, job.job_description, job.company, job.job_title, style=style)
+        sys, usr = prompts.cover_letter(job.tailored_cv, job.job_description, job.company, job.job_title,
+                                         style=style, fit=job.fit_score)
         letter = drafter().complete(sys, usr).strip()
     except Exception as e:
         _fail(db, user, job, "cover", e)

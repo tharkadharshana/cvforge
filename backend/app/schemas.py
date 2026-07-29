@@ -198,6 +198,21 @@ class JobSearchOut(BaseModel):
     enabled: bool = True
 
 
+# ---------- job fit scoring ----------
+class FitScoreIn(BaseModel):
+    job_description: str = Field(min_length=20)
+    job_id: Optional[int] = None   # persist onto this Application if provided
+
+
+class FitScoreOut(BaseModel):
+    score: int = 0
+    dimensions: dict[str, int] = {}
+    deal_breakers: list[str] = []
+    strengths: list[str] = []
+    gaps: list[str] = []
+    recommendation: str = "GOOD_MATCH"
+
+
 # ---------- generation ----------
 class GenerateIn(BaseModel):
     job_description: str = Field(min_length=20)

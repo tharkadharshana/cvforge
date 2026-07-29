@@ -75,6 +75,8 @@ export const api = {
     return reqForm("/cv/import-file", fd);
   },
 
+  fitScore: (job_description, job_id) =>
+    req("/generate/fit-score", { method: "POST", body: { job_description, job_id } }),
   startGeneration: (payload) => req("/generate/start", { method: "POST", body: payload }),
   tailor: (jobId) => req(`/generate/${jobId}/tailor`, { method: "POST" }),
   cover: (jobId) => req(`/generate/${jobId}/cover`, { method: "POST" }),

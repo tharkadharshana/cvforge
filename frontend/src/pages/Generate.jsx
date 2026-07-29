@@ -6,7 +6,12 @@ import { useCredits } from "../lib/credits";
 import { Banner, Spinner, ScoreGauge } from "../components/ui";
 import TemplatePicker from "../components/TemplatePicker";
 import { renderTemplate, TEMPLATES } from "../templates/registry";
-import { DownloadBar, CritiquePanel, ImproveButton } from "./ApplicationDetail";
+import { DownloadBar, CritiquePanel, ImproveButton, Chips } from "./ApplicationDetail";
+
+const RECOMMENDATION_LABEL = {
+  STRONG_MATCH: "Strong match", GOOD_MATCH: "Good match",
+  WEAK_MATCH: "Weak match", SKIP: "Likely not worth applying",
+};
 
 const STEPS = [
   { key: "tailor", label: "Tailoring CV", call: (id) => api.tailor(id) },
@@ -52,6 +57,10 @@ export default function Generate() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [paywall, setPaywall] = useState(false);
+
+  const [fit, setFit] = useState(null);
+  const [fitBusy, setFitBusy] = useState(false);
+  const [fitErr, setFitErr] = useState("");
 
   const [jobId, setJobId] = useState(null);
   const [stepStatus, setStepStatus] = useState({});
@@ -123,6 +132,13 @@ export default function Generate() {
     refreshCredits();
   };
 
+  const checkFit = async () => {
+    setFitErr(""); setFitBusy(true); setFit(null);
+    try { setFit(await api.fitScore(jd, jobId)); }
+    catch (e) { setFitErr(e.message); }
+    finally { setFitBusy(false); }
+  };
+
   const run = async () => {
     setErr(""); setPaywall(false); setBusy(true);
     setJobId(null); setTailoredCv(null); setCoverLetter(null); setCritique(null);
@@ -180,6 +196,31 @@ export default function Generate() {
       <div className="label mb-1">Job description</div>
       <textarea className="field min-h-[220px] resize-y leading-relaxed" value={jd} onChange={(e) => setJd(e.target.value)}
         placeholder="Paste the full job description here…" />
+
+      <div className="flex items-center justify-between mt-3">
+        <button className="btn-ghost text-[11px] px-3 py-2" disabled={fitBusy || jd.trim().length < 20} onClick={checkFit}>
+          {fitBusy ? "Checking fit…" : "Check fit (free)"}
+        </button>
+      </div>
+      {fitErr && <div className="mt-2"><Banner kind="info">{fitErr}</Banner></div>}
+      {fit && (
+        <div className="mt-3 panel p-5 space-y-3">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <ScoreGauge score={fit.score} />
+            <span className="label">{RECOMMENDATION_LABEL[fit.recommendation] || fit.recommendation}</span>
+          </div>
+          {(fit.recommendation === "SKIP" || fit.recommendation === "WEAK_MATCH") && (
+            <Banner kind="warn">
+              This job may not be a strong fit. You can still generate — review the gaps below first.
+            </Banner>
+          )}
+          {fit.deal_breakers?.length > 0 && (
+            <div><div className="label mb-1.5 text-bad">Deal-breakers</div><Chips items={fit.deal_breakers} tone="bad" /></div>
+          )}
+          <div><div className="label mb-1.5 text-good">Strengths</div><Chips items={fit.strengths} tone="good" /></div>
+          <div><div className="label mb-1.5 text-bad">Gaps</div><Chips items={fit.gaps} tone="bad" /></div>
+        </div>
+      )}
 
       <div className="label mt-4 mb-2">Template (you can change this any time later)</div>
       <TemplatePicker value={templateId} onSelect={setTemplateId} busy={busy} />
