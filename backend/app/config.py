@@ -73,6 +73,14 @@ class Settings(BaseSettings):
     gemini_free_results_per_search: int = 10
     gemini_paid_results_per_search: int = 50
 
+    # --- OpenAI web_search fallback for job discovery ---
+    # Used only when the Gemini grounding call above fails (e.g. its google_search
+    # quota isn't provisioned) -- not a separate feature, just a backup engine for
+    # the same "AI search" results. Leave blank to disable the fallback.
+    openai_api_key: str = ""
+    openai_api_keys: str = ""
+    openai_search_model: str = "gpt-4o-mini"
+
     # comma-separated emails granted admin/support access (audit + manual credit adjust)
     admin_emails: str = ""
 
@@ -120,6 +128,10 @@ class Settings(BaseSettings):
     @property
     def gemini_api_keys_list(self) -> list[str]:
         return self._key_list(self.gemini_api_keys, self.gemini_api_key)
+
+    @property
+    def openai_api_keys_list(self) -> list[str]:
+        return self._key_list(self.openai_api_keys, self.openai_api_key)
 
 
 settings = Settings()

@@ -1,15 +1,20 @@
 """Job discovery via Gemini's native `google_search` grounding tool — a
 legitimate use of Google's own search API (unlike app/jobs/linkedin.py's guest-HTML
 scrape), so no opt-in flag / ToS gate is needed. Auto-enabled whenever a Gemini
-key is configured (see enabled()).
+or OpenAI key is configured (see enabled()).
+
+Falls back to app/jobs/openai_search.py (OpenAI's web_search tool) whenever the
+Gemini call fails -- in practice this has meant Gemini's google_search grounding
+quota not being provisioned on the Google Cloud project, which is a billing
+setting outside this app's control, not a transient error worth just retrying.
 """
 from __future__ import annotations
-import hashlib
-import json
 from datetime import datetime, timezone
 from ..config import settings
 from ..llm.base import call_with_key_rotation
 from ..logging_config import get_logger
+from . import openai_search
+from .search_util import extract_json_array, normalize_items
 
 log = get_logger("gemini_search")
 
@@ -21,7 +26,7 @@ class GeminiSearchError(Exception):
 
 
 def enabled() -> bool:
-    return bool(settings.gemini_api_keys_list)
+    return bool(settings.gemini_api_keys_list) or openai_search.enabled()
 
 
 def _client_for(key: str):
@@ -56,36 +61,7 @@ Location: {location}
 """
 
 
-def _url_hash(url: str) -> str:
-    return hashlib.sha256(url.strip().encode("utf-8")).hexdigest()
-
-
-def _extract_json_array(raw: str) -> list:
-    """Grounding + strict JSON response_mime_type aren't reliably combinable in the
-    SDK, so the model is instructed via prompt text to emit raw JSON and we
-    defensively extract it -- analog of llm/base.py::_safe_json but for a
-    top-level array instead of an object."""
-    s = (raw or "").strip()
-    if s.startswith("```"):
-        s = s.split("```", 2)[1] if s.count("```") >= 2 else s.strip("`")
-        if s.lstrip().lower().startswith("json"):
-            s = s.lstrip()[4:]
-    s = s.strip().strip("`").strip()
-    start, end = s.find("["), s.rfind("]")
-    if start != -1 and end != -1 and end > start:
-        s = s[start:end + 1]
-    try:
-        data = json.loads(s)
-    except json.JSONDecodeError as e:
-        raise GeminiSearchError(f"Gemini did not return valid JSON: {e}")
-    if not isinstance(data, list):
-        raise GeminiSearchError("Gemini response was not a JSON array")
-    return data
-
-
-def search_jobs(query: str, location: str = "", limit: int = 10) -> list[dict]:
-    """Return normalized job listings via Gemini's google_search grounding tool.
-    Raises GeminiSearchError on problems."""
+def _search_via_gemini(query: str, location: str, limit: int) -> list[dict]:
     from google.genai import types
 
     today = datetime.now(timezone.utc).date().isoformat()
@@ -102,29 +78,31 @@ def search_jobs(query: str, location: str = "", limit: int = 10) -> list[dict]:
         )
         return resp.text
 
-    log.info("gemini job search q=%r loc=%r", query[:60], (location or "")[:40])
-    try:
-        raw = call_with_key_rotation("gemini_search", settings.gemini_api_keys_list, attempt)
-    except Exception as e:
-        log.warning("gemini job search failed: %s", e)
-        raise GeminiSearchError(f"Job search request failed: {e}")
+    raw = call_with_key_rotation("gemini_search", settings.gemini_api_keys_list, attempt)
+    items = extract_json_array(raw)
+    return normalize_items(items)
 
-    items = _extract_json_array(raw)
-    jobs = []
-    for it in items:
-        if not isinstance(it, dict):
-            continue
-        url = (it.get("url") or "").strip()
-        if not url:
-            continue
-        jobs.append({
-            "job_id": _url_hash(url),
-            "title": (it.get("title") or "").strip()[:255],
-            "company": (it.get("company") or "").strip()[:255],
-            "location": (it.get("location") or "").strip()[:255],
-            "posted_at": (it.get("posted_at") or "").strip()[:40],
-            "url": url[:500],
-            "description": (it.get("description") or "").strip(),
-        })
-    log.info("gemini job search: %d jobs parsed", len(jobs))
-    return jobs
+
+def search_jobs(query: str, location: str = "", limit: int = 10) -> list[dict]:
+    """Return normalized job listings, preferring Gemini's google_search grounding
+    and falling back to OpenAI's web_search tool if Gemini fails or isn't
+    configured. Raises GeminiSearchError only if neither is available/succeeds."""
+    log.info("ai job search q=%r loc=%r", query[:60], (location or "")[:40])
+
+    gemini_error: Exception | None = None
+    if settings.gemini_api_keys_list:
+        try:
+            jobs = _search_via_gemini(query, location, limit)
+            log.info("gemini job search: %d jobs parsed", len(jobs))
+            return jobs
+        except Exception as e:
+            gemini_error = e
+            log.warning("gemini job search failed, falling back to openai: %s", e)
+
+    if openai_search.enabled():
+        try:
+            return openai_search.search_jobs(query, location, limit)
+        except openai_search.OpenAISearchError as e:
+            raise GeminiSearchError(str(e)) from e
+
+    raise GeminiSearchError(f"Job search request failed: {gemini_error}" if gemini_error else "Job search is not configured.")

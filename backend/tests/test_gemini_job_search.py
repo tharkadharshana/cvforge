@@ -1,6 +1,8 @@
-"""Gemini google_search-grounded job discovery (3rd job source)."""
+"""Gemini google_search-grounded job discovery (3rd job source), with an
+OpenAI web_search fallback when Gemini's grounding call fails."""
+import pytest
 from conftest import auth_headers
-from app.jobs import gemini_search, linkedin
+from app.jobs import gemini_search, linkedin, openai_search, search_util
 
 
 def test_search_returns_disabled_when_unconfigured(client, monkeypatch):
@@ -93,15 +95,47 @@ def test_quota_is_independent_from_linkedin(client, monkeypatch):
 
 
 def test_extract_json_array_variants():
-    assert gemini_search._extract_json_array('[{"a": 1}]') == [{"a": 1}]
-    assert gemini_search._extract_json_array('```json\n[{"a": 1}]\n```') == [{"a": 1}]
-    assert gemini_search._extract_json_array('Here are the results:\n[{"a": 1}]\nHope that helps!') == [{"a": 1}]
-    assert gemini_search._extract_json_array('[]') == []
+    assert search_util.extract_json_array('[{"a": 1}]') == [{"a": 1}]
+    assert search_util.extract_json_array('```json\n[{"a": 1}]\n```') == [{"a": 1}]
+    assert search_util.extract_json_array('Here are the results:\n[{"a": 1}]\nHope that helps!') == [{"a": 1}]
+    assert search_util.extract_json_array('[]') == []
 
 
 def test_extract_json_array_rejects_non_array():
-    import pytest
-    with pytest.raises(gemini_search.GeminiSearchError):
-        gemini_search._extract_json_array('{"not": "an array"}')
-    with pytest.raises(gemini_search.GeminiSearchError):
-        gemini_search._extract_json_array('not json at all')
+    with pytest.raises(ValueError):
+        search_util.extract_json_array('{"not": "an array"}')
+    with pytest.raises(ValueError):
+        search_util.extract_json_array('not json at all')
+
+
+def test_falls_back_to_openai_when_gemini_fails(monkeypatch):
+    """gemini_search.search_jobs() itself (not the router mock) should retry
+    via OpenAI's web_search tool if the Gemini grounding call errors out."""
+    monkeypatch.setattr("app.config.settings.gemini_api_key", "fake-gemini-key")
+    monkeypatch.setattr(gemini_search, "_search_via_gemini",
+                        lambda q, loc, limit: (_ for _ in ()).throw(RuntimeError("429 RESOURCE_EXHAUSTED")))
+    monkeypatch.setattr(openai_search, "enabled", lambda: True)
+    monkeypatch.setattr(openai_search, "search_jobs", lambda q, loc, limit: [
+        {"job_id": "oa1", "title": "Fallback Job", "company": "Acme", "location": "Remote",
+         "posted_at": "", "url": "https://x/1", "description": "via openai"},
+    ])
+    jobs = gemini_search.search_jobs("backend engineer")
+    assert jobs[0]["title"] == "Fallback Job"
+
+
+def test_raises_when_gemini_and_openai_both_fail(monkeypatch):
+    monkeypatch.setattr("app.config.settings.gemini_api_key", "fake-gemini-key")
+    monkeypatch.setattr(gemini_search, "_search_via_gemini",
+                        lambda q, loc, limit: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(openai_search, "enabled", lambda: True)
+    monkeypatch.setattr(openai_search, "search_jobs",
+                        lambda q, loc, limit: (_ for _ in ()).throw(openai_search.OpenAISearchError("also boom")))
+    with pytest.raises(gemini_search.GeminiSearchError, match="also boom"):
+        gemini_search.search_jobs("backend engineer")
+
+
+def test_enabled_true_when_only_openai_configured(monkeypatch):
+    monkeypatch.setattr("app.config.settings.gemini_api_key", "")
+    monkeypatch.setattr("app.config.settings.gemini_api_keys", "")
+    monkeypatch.setattr(openai_search, "enabled", lambda: True)
+    assert gemini_search.enabled() is True
