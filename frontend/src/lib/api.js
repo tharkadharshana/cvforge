@@ -118,6 +118,13 @@ export const api = {
   linkedinGetPreferences: () => req("/jobs/linkedin/preferences"),
   linkedinPutPreferences: (prefs) => req("/jobs/linkedin/preferences", { method: "PUT", body: prefs }),
 
+  // Gemini google_search-grounded job discovery (auto-enabled when GEMINI_API_KEY is set)
+  geminiSearch: ({ q, location = "" }) =>
+    req(`/jobs/gemini/search?q=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}`),
+  geminiJobDetail: (jobId) => req(`/jobs/gemini/${encodeURIComponent(jobId)}`),
+  geminiJobAction: (jobId, action) =>
+    req(`/jobs/gemini/${encodeURIComponent(jobId)}/action`, { method: "PATCH", body: { action } }),
+
   // public ATS checker (works logged out; token sent when present for paid detail)
   atsCheck: ({ file, rawText, jobDescription }) => {
     const fd = new FormData();

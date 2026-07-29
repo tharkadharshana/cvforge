@@ -238,6 +238,36 @@ class JobSearchOut(BaseModel):
     enabled: bool = True
 
 
+class GeminiJobOut(BaseModel):
+    job_id: str
+    title: str = ""
+    company: str = ""
+    location: str = ""
+    posted_at: str = ""
+    url: str = ""
+    saved: bool = False
+    dismissed: bool = False
+
+
+class GeminiSearchOut(BaseModel):
+    jobs: list[GeminiJobOut] = []
+    searches_remaining_today: int | None = None  # None = unlimited (paid), or feature disabled
+    enabled: bool = True
+
+
+class GeminiJobDetailOut(BaseModel):
+    job_id: str
+    title: str = ""
+    company: str = ""
+    location: str = ""
+    url: str = ""
+    description: str = ""
+
+
+class GeminiActionIn(BaseModel):
+    action: Literal["save", "dismiss", "unsave", "undismiss"]
+
+
 # ---------- job fit scoring ----------
 class FitScoreIn(BaseModel):
     job_description: str = Field(min_length=20)

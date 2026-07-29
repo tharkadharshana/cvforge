@@ -7,6 +7,7 @@ const links = [
   { to: "/cv", label: "Base CV" },
   { to: "/jobs", label: "Find Jobs" },
   { to: "/jobs/linkedin", label: "LinkedIn" },
+  { to: "/jobs/ai", label: "AI Search" },
   { to: "/generate", label: "Generate" },
   { to: "/applications", label: "History" },
   { to: "/billing", label: "Billing" },

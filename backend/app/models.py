@@ -163,6 +163,51 @@ class JobSearchUsage(Base):
     search_count: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class GeminiJobCache(Base):
+    """Shared cache of Gemini google_search-grounded listings, keyed by sha256(url).
+    Unlike LinkedIn, the grounded search response already returns the full
+    description in the search step, so there's no separate detail-fetch. Kept
+    as its own table (not reusing linkedin_jobs_cache/job_search_*) so the two
+    sources stay independent. See app/jobs/gemini_search.py."""
+    __tablename__ = "gemini_jobs_cache"
+
+    job_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    company: Mapped[str] = mapped_column(String(255), default="")
+    location: Mapped[str] = mapped_column(String(255), default="")
+    posted_at: Mapped[str] = mapped_column(String(40), default="")
+    url: Mapped[str] = mapped_column(String(500), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    cached_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class GeminiSearchUsage(Base):
+    """Per-day search count for Gemini job search's free-tier daily limit.
+    Independent counter from job_search_usage (LinkedIn's)."""
+    __tablename__ = "gemini_search_usage"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_gemini_search_usage_user_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    date: Mapped[str] = mapped_column(String(10))  # "YYYY-MM-DD", UTC
+    search_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class GeminiSearchResult(Base):
+    """Links a user to a cached Gemini listing they've seen, so save/dismiss
+    state is per-user even though the underlying listing is shared."""
+    __tablename__ = "gemini_search_results"
+    __table_args__ = (UniqueConstraint("user_id", "job_id", name="uq_gemini_search_results_user_job"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("gemini_jobs_cache.job_id"), index=True)
+    search_keywords: Mapped[str] = mapped_column(String(255), default="")
+    saved: Mapped[bool] = mapped_column(default=False)
+    dismissed: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class AuditEvent(Base):
     """Durable, queryable record of every meaningful action — the support/investigation backbone."""
     __tablename__ = "audit_events"
