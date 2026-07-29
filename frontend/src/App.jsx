@@ -14,6 +14,7 @@ import BaseCV from "./pages/BaseCV";
 import Generate from "./pages/Generate";
 import Jobs from "./pages/Jobs";
 import JobSearch from "./pages/JobSearch";
+import JobSearchAI from "./pages/JobSearchAI";
 import Applications from "./pages/Applications";
 import ApplicationDetail from "./pages/ApplicationDetail";
 import Billing from "./pages/Billing";
@@ -44,6 +45,7 @@ export default function App() {
               <Route path="/generate" element={<Generate />} />
               <Route path="/jobs" element={<Jobs />} />
               <Route path="/jobs/linkedin" element={<JobSearch />} />
+              <Route path="/jobs/ai" element={<JobSearchAI />} />
               <Route path="/applications" element={<Applications />} />
               <Route path="/applications/:id" element={<ApplicationDetail />} />
               <Route path="/billing" element={<Billing />} />
