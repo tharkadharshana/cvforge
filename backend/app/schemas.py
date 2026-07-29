@@ -73,6 +73,14 @@ class Project(CoerceModel):
     link: str = ""
 
 
+class StyleProfile(CoerceModel):
+    """User-declared writing preferences, spliced into the tailor/cover prompts."""
+    tone: str = ""
+    dos: list[str] = []
+    donts: list[str] = []
+    avoid_phrases: list[str] = []
+
+
 class CVData(CoerceModel):
     contact: Contact = Field(default_factory=Contact)
     summary: str = ""
@@ -83,6 +91,7 @@ class CVData(CoerceModel):
     certifications: list[str] = []
     awards: list[str] = []
     languages: list[str] = []
+    style_profile: StyleProfile = Field(default_factory=StyleProfile)
 
 
 # ---------- auth ----------

@@ -86,7 +86,7 @@ def tailor(job_id: int, db: Session = Depends(get_db), user: models.User = Depen
 
     base = CVData.model_validate(user.base_cv.data)
     try:
-        sys, usr = prompts.tailor_cv(base.model_dump(), job.job_description)
+        sys, usr = prompts.tailor_cv(base.model_dump(), job.job_description, style=base.style_profile.model_dump())
         tailored = CVData.model_validate(drafter().complete_json(sys, usr, pro=_TAILOR_PRO))
     except Exception as e:
         _fail(db, user, job, "tailor", e)
@@ -105,8 +105,9 @@ def cover(job_id: int, db: Session = Depends(get_db), user: models.User = Depend
     if job.status not in ("tailored", "covered", "failed") or not job.tailored_cv:
         raise HTTPException(status_code=409, detail=f"Job is '{job.status}', cannot run cover step")
 
+    style = CVData.model_validate(user.base_cv.data).style_profile.model_dump()
     try:
-        sys, usr = prompts.cover_letter(job.tailored_cv, job.job_description, job.company, job.job_title)
+        sys, usr = prompts.cover_letter(job.tailored_cv, job.job_description, job.company, job.job_title, style=style)
         letter = drafter().complete(sys, usr).strip()
     except Exception as e:
         _fail(db, user, job, "cover", e)

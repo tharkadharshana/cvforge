@@ -53,13 +53,39 @@ def build_from_answers(answers: dict) -> tuple[str, str]:
     return system, user
 
 
-def tailor_cv(base_cv: dict, job_description: str) -> tuple[str, str]:
+def _style_block(style: dict | None) -> str:
+    """Format a user's declared writing-style preferences for splicing into a system prompt.
+
+    Returns "" when the profile is empty so callers can unconditionally append it.
+    """
+    if not style:
+        return ""
+    tone = style.get("tone") or ""
+    dos = style.get("dos") or []
+    donts = style.get("donts") or []
+    avoid = style.get("avoid_phrases") or []
+    if not (tone or dos or donts or avoid):
+        return ""
+    parts = []
+    if tone:
+        parts.append(f"tone={tone}")
+    if dos:
+        parts.append("always: " + "; ".join(dos))
+    if donts:
+        parts.append("never: " + "; ".join(donts))
+    if avoid:
+        parts.append("avoid these phrases entirely: " + ", ".join(avoid))
+    return " Writing style rules (follow strictly): " + "; ".join(parts) + "."
+
+
+def tailor_cv(base_cv: dict, job_description: str, style: dict | None = None) -> tuple[str, str]:
     system = (
         "You are an expert resume writer producing an ATS-optimised, single-column CV tailored to a specific job. "
         "Select and prioritise the most relevant experience, projects and skills from the candidate's master CV. "
         "Mirror the job description's keywords and terminology where the candidate genuinely has the skill. "
         "Rewrite bullets in strong action-verb + impact form, quantified where the source supports it. "
         "Keep it concise (most relevant experience first, trim irrelevant items). " + NO_FABRICATION + " Output JSON only."
+        + _style_block(style)
     )
     user = (
         f"{CV_SCHEMA_HINT}\n\nCandidate master CV JSON:\n{json.dumps(base_cv, ensure_ascii=False)}\n\n"
@@ -69,12 +95,14 @@ def tailor_cv(base_cv: dict, job_description: str) -> tuple[str, str]:
     return system, user
 
 
-def cover_letter(tailored_cv: dict, job_description: str, company: str, job_title: str) -> tuple[str, str]:
+def cover_letter(tailored_cv: dict, job_description: str, company: str, job_title: str,
+                  style: dict | None = None) -> tuple[str, str]:
     system = (
         "You write cover letters that read as genuinely human-written: natural, specific, confident but not "
         "boastful, no clichés ('I am writing to express my interest', 'team player', 'fast-paced environment'), "
         "no em-dash overuse, varied sentence length. 3-4 short paragraphs. Tie concrete achievements to the role. "
         + NO_FABRICATION + " Output plain text only, no markdown."
+        + _style_block(style)
     )
     user = (
         f"Candidate (tailored) CV JSON:\n{json.dumps(tailored_cv, ensure_ascii=False)}\n\n"
