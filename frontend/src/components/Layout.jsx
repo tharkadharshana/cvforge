@@ -6,6 +6,7 @@ import { ThemeToggle } from "../lib/theme";
 const links = [
   { to: "/cv", label: "Base CV" },
   { to: "/jobs", label: "Find Jobs" },
+  { to: "/jobs/linkedin", label: "LinkedIn" },
   { to: "/generate", label: "Generate" },
   { to: "/applications", label: "History" },
   { to: "/billing", label: "Billing" },
@@ -27,7 +28,7 @@ export default function Layout() {
 
           <nav className="flex items-center gap-1">
             {links.map((l) => (
-              <NavLink key={l.to} to={l.to}
+              <NavLink key={l.to} to={l.to} end={l.to === "/jobs"}
                 className={({ isActive }) =>
                   `font-mono text-[12px] uppercase tracking-[0.12em] px-2.5 py-2 border transition-colors ${
                     isActive ? "border-accent text-accent" : "border-transparent text-muted hover:text-fg"}`

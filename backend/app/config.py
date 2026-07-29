@@ -55,6 +55,15 @@ class Settings(BaseSettings):
     adzuna_app_key: str = ""
     adzuna_country: str = "us"          # Adzuna country code: us, gb, ca, au, de, ...
 
+    # --- LinkedIn job discovery (public jobs-guest pages, no API key) ---
+    # Off by default: this reads LinkedIn's unauthenticated guest HTML pages,
+    # which is against LinkedIn's Terms of Service (see docs/LEGAL_NOTES.md).
+    # Explicit opt-in only — do not enable without accepting that risk.
+    linkedin_search_enabled: bool = False
+    linkedin_free_daily_searches: int = 3
+    linkedin_free_results_per_search: int = 10
+    linkedin_paid_results_per_search: int = 50
+
     # comma-separated emails granted admin/support access (audit + manual credit adjust)
     admin_emails: str = ""
 

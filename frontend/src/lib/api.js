@@ -108,6 +108,16 @@ export const api = {
   searchJobs: (q, location = "", page = 1) =>
     req(`/jobs/search?q=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}&page=${page}`),
 
+  // LinkedIn job discovery (off by default server-side; see docs/LEGAL_NOTES.md)
+  linkedinSearch: ({ q, location = "", start = 0, timeFilter = "week", experience = "" }) =>
+    req(`/jobs/linkedin/search?q=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}` +
+        `&start=${start}&time_filter=${timeFilter}&experience=${experience}`),
+  linkedinJobDetail: (jobId) => req(`/jobs/linkedin/${encodeURIComponent(jobId)}`),
+  linkedinJobAction: (jobId, action) =>
+    req(`/jobs/linkedin/${encodeURIComponent(jobId)}/action`, { method: "PATCH", body: { action } }),
+  linkedinGetPreferences: () => req("/jobs/linkedin/preferences"),
+  linkedinPutPreferences: (prefs) => req("/jobs/linkedin/preferences", { method: "PUT", body: prefs }),
+
   // public ATS checker (works logged out; token sent when present for paid detail)
   atsCheck: ({ file, rawText, jobDescription }) => {
     const fd = new FormData();
