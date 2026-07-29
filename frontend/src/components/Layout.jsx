@@ -5,7 +5,7 @@ import { ThemeToggle } from "../lib/theme";
 
 const links = [
   { to: "/cv", label: "Base CV" },
-  { to: "/jobs/linkedin", label: "Job Search" },
+  { to: "/jobs/search", label: "Job Search" },
   { to: "/generate", label: "Generate" },
   { to: "/applications", label: "History" },
   { to: "/billing", label: "Billing" },

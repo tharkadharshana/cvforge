@@ -11,6 +11,7 @@ from ..schemas import CVData
 from ..cv import pipeline, prompts, render, templates, verify
 from ..llm.orchestrator import drafter, critic
 from ..logging_config import get_logger
+from ..errors import opaque_502
 
 router = APIRouter(tags=["generate"])
 log = get_logger("generate")
@@ -31,12 +32,13 @@ def _get_job(db: Session, user: models.User, job_id: int) -> models.Application:
 
 
 def _fail(db: Session, user: models.User, job: models.Application, step: str, e: Exception):
+    log.error("generate step=%s failed: %s", step, e, exc_info=True)
     job.status = "failed"
-    job.error = str(e)[:500]
+    job.error = f"Generation failed at step '{step}'."
     db.commit()
     audit.record("generate_failed", status="failed", user_id=user.id,
                  meta={"job_id": job.id, "step": step, "error": str(e)[:200]})
-    raise HTTPException(status_code=502, detail=f"LLM generation failed at step '{step}': {e}")
+    raise HTTPException(status_code=502, detail=f"Generation failed at step '{step}'. Please try again.")
 
 
 @router.get("/templates")
@@ -63,7 +65,7 @@ def fit_score(payload: schemas.FitScoreIn, db: Session = Depends(get_db),
         sys, usr = prompts.fit_score(base.model_dump(), payload.job_description)
         result = critic().complete_json(sys, usr)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Fit scoring failed: {e}")
+        raise opaque_502(log, "Fit scoring failed", e)
 
     out = schemas.FitScoreOut(**result)
     if payload.job_id is not None:
@@ -251,7 +253,7 @@ def improve_application(app_id: int, auto: bool = False, db: Session = Depends(g
     except Exception as e:
         audit.record("generate_improve", status="failed", user_id=user.id,
                      meta={"why": "llm_error", "error": str(e)[:200], "application_id": a.id})
-        raise HTTPException(status_code=502, detail=f"LLM generation failed: {e}")
+        raise opaque_502(log, "Generation failed", e)
 
     pipeline.annotate_ats_guarantee(crit, target)
     new_score = int(crit.get("ats_score", 0))
@@ -452,7 +454,7 @@ def reevaluate_application(app_id: int, db: Session = Depends(get_db),
     except Exception as e:
         audit.record("application_reevaluate", status="failed", user_id=user.id,
                      meta={"why": "llm_error", "error": str(e)[:200], "application_id": a.id})
-        raise HTTPException(status_code=502, detail=f"LLM generation failed: {e}")
+        raise opaque_502(log, "Generation failed", e)
 
     a.critique = crit
     a.ats_score = int(crit.get("ats_score", 0))

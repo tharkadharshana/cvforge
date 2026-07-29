@@ -28,24 +28,28 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.5-flash"
     gemini_model_pro: str = "gemini-3.5-flash"
 
-    drafter_provider: str = "gemini"
-    critic_provider: str = "deepseek"
+    openai_model: str = "gpt-4o-mini"
+    openai_model_pro: str = "gpt-4o-mini"
 
-    # --- generation pipeline limits (Vercel: each request does ONE LLM call,
-    # must stay well under the 60s function limit) ---
+    # --- generation pipeline limits (Vercel: a request may chain through
+    # every provider below before giving up -- all of them must fit inside
+    # the 60s function limit) ---
     # "fast": always use the non-pro/flash models (typical 5-25s/call). Required on Vercel Hobby.
     # "quality": tailor/critique may use pro models (current behavior) - only safe on hosts without a 60s cap.
     generation_tier: str = "fast"
     # cap LLM output tokens per call, applied to every provider.
     llm_max_tokens: int = 4000
     # per-call HTTP timeout (seconds). Keeps a stuck provider from being killed
-    # by the platform with no useful error.
-    llm_timeout_s: float = 50.0
+    # by the platform with no useful error. Sized so the whole llm_provider_chain
+    # stalling out still fits under Vercel's 60s function limit
+    # (3 providers x 15s = 45s, leaving ~15s headroom for everything else) --
+    # do not raise this without also shortening the chain or the limit.
+    llm_timeout_s: float = 15.0
 
-    # if the primary provider above fails (incl. 503/overloaded after retries),
-    # retry the same call on this provider instead. empty = no fallback.
-    drafter_fallback_provider: str = "deepseek"
-    critic_fallback_provider: str = "gemini"
+    # same chain used for both drafting and critiquing: tries each provider in
+    # order, falling through to the next on any error (incl. 503/overloaded/
+    # timeout after that provider's own key-rotation retries are exhausted).
+    llm_provider_chain: str = "gemini,openai,deepseek"
 
     # --- job aggregator (Adzuna free tier) ---
     # Legal job-search feed so users can find roles and generate a CV against one

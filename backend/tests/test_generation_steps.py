@@ -145,7 +145,7 @@ def test_failed_step_does_not_charge_and_can_be_retried(client, monkeypatch):
 
     body = client.get(f"/generate/{job_id}", headers=H).json()
     assert body["status"] == "failed"
-    assert "provider overloaded" in body["error"]
+    assert body["error"] == "Generation failed at step 'tailor'."
     assert client.get("/billing/summary", headers=H).json()["credits"] == credits_before
 
     # retry succeeds once the provider works again

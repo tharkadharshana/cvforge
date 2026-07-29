@@ -43,7 +43,7 @@ def test_search_surfaces_gemini_errors(client, monkeypatch):
     H = auth_headers(client, email="gemini3@test.com")
     r = client.get("/jobs/gemini/search?q=python", headers=H)
     assert r.status_code == 502
-    assert "boom" in r.json()["detail"]
+    assert r.json()["detail"] == "AI search failed. Please try again."
 
 
 def test_search_requires_auth(client):
@@ -88,7 +88,7 @@ def test_quota_is_independent_from_linkedin(client, monkeypatch):
         r = client.get("/jobs/gemini/search?q=dev", headers=H)
         assert r.status_code == 200
         # interleave a LinkedIn search -- must not consume the Gemini counter
-        client.get("/jobs/linkedin/search?q=dev", headers=H)
+        client.get("/jobs/listings/search?q=dev", headers=H)
 
     r = client.get("/jobs/gemini/search?q=dev", headers=H)
     assert r.status_code == 429

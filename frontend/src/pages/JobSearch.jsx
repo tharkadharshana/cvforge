@@ -3,19 +3,21 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { Banner, Spinner } from "../components/ui";
 
-// Combined job discovery: Adzuna's job board + LinkedIn's public listing pages
-// + Gemini/OpenAI live web search, merged into one result list ordered by
-// most-recently-posted. Each source is independently optional (Adzuna/LinkedIn
-// need config, see docs/LEGAL_NOTES.md for LinkedIn) -- if one is unavailable
-// the others' results still show. Adzuna doesn't expose a post date or
-// per-user save/dismiss state, so its listings sort last and skip those actions.
+// Combined job discovery: a job board API + a web listings source + live AI
+// web search, merged into one result list ordered by most-recently-posted.
+// Each source is independently optional (see docs/LEGAL_NOTES.md for the
+// listings source) -- if one is unavailable the others' results still show.
+// Deliberately source-agnostic in anything user-visible (labels, routes,
+// network requests) -- don't name the upstream site.
+// Job board doesn't expose a post date or per-user save/dismiss state, so its
+// listings sort last and skip those actions.
 
 function postedAtMs(job) {
   const t = job.posted_at ? Date.parse(job.posted_at) : NaN;
   return Number.isNaN(t) ? -Infinity : t;  // undated listings sort last
 }
 
-const SOURCE_LABELS = { adzuna: "Job board", linkedin: "LinkedIn", gemini: "AI search" };
+const SOURCE_LABELS = { adzuna: "Job board", linkedin: "Web listings", gemini: "AI search" };
 
 export default function JobSearch() {
   const nav = useNavigate();
@@ -62,7 +64,7 @@ export default function JobSearch() {
     } else {
       setLinkedinRemaining(null);
       // 404 = feature disabled server-side, not an error worth surfacing
-      if (li.reason?.status !== 404) setLinkedinError(li.reason?.message || "LinkedIn search failed.");
+      if (li.reason?.status !== 404) setLinkedinError(li.reason?.message || "Web listings search failed.");
     }
     if (gm.status === "fulfilled") {
       merged.push(...gm.value.jobs.map((j) => ({ ...j, source: "gemini" })));
@@ -122,12 +124,11 @@ export default function JobSearch() {
     <div className="rise">
       <h1 className="font-display font-extrabold text-3xl mb-1">Job search</h1>
       <p className="label mb-3">
-        Search a job board, LinkedIn's public listings, and live web results together, then forge a
-        tailored CV in a click.
+        Search a job board, web listings, and live AI search together, then forge a tailored CV in a click.
       </p>
       <Banner kind="info">
         Listings are sourced from third-party sites and provided as-is. CVForge is not affiliated with
-        LinkedIn, Adzuna, or any listed employer. Verify details on the original posting before applying.
+        any job board or listed employer. Verify details on the original posting before applying.
       </Banner>
 
       <div className="flex flex-col sm:flex-row gap-2 mt-4">
@@ -142,14 +143,14 @@ export default function JobSearch() {
 
       {err && <div className="mt-4"><Banner>{err}</Banner></div>}
       {adzunaError && <div className="mt-4"><Banner>Job board: {adzunaError}</Banner></div>}
-      {linkedinError && <div className="mt-4"><Banner>LinkedIn: {linkedinError}</Banner></div>}
+      {linkedinError && <div className="mt-4"><Banner>Web listings: {linkedinError}</Banner></div>}
       {geminiError && <div className="mt-4"><Banner>AI search: {geminiError}</Banner></div>}
       {busy && <div className="mt-4"><Spinner label="Searching listings" /></div>}
 
       {jobs && (
         <div className="mt-3 label">
           {jobs.length} jobs found
-          {linkedinRemaining !== null && <> · LinkedIn: {linkedinRemaining} left today</>}
+          {linkedinRemaining !== null && <> · Web listings: {linkedinRemaining} left today</>}
           {geminiRemaining !== null && <> · AI search: {geminiRemaining} left today</>}
         </div>
       )}

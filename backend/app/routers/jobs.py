@@ -8,6 +8,7 @@ from ..database import get_db
 from ..jobs.fetch import fetch_job_text, FetchError
 from ..jobs import aggregator, linkedin, gemini_search
 from ..logging_config import get_logger
+from ..errors import opaque_502
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 log = get_logger("jobs")
@@ -34,7 +35,7 @@ def search_jobs(q: str = Query(..., min_length=2), location: str = "", page: int
     try:
         results = aggregator.search(q.strip(), location.strip(), page)
     except aggregator.AggregatorError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise opaque_502(log, "Job board search failed", e)
     return schemas.JobSearchOut(results=results, page=page, enabled=True)
 
 
@@ -46,7 +47,7 @@ def search_jobs(q: str = Query(..., min_length=2), location: str = "", page: int
 
 def _require_linkedin_enabled():
     if not settings.linkedin_search_enabled:
-        raise HTTPException(status_code=404, detail="LinkedIn job search is not enabled on this server")
+        raise HTTPException(status_code=404, detail="This job search source is not enabled on this server")
 
 
 def _today() -> str:
@@ -73,7 +74,7 @@ def _check_and_bump_search_quota(db: Session, user: models.User) -> int | None:
     return limit - row.search_count
 
 
-@router.get("/linkedin/search", response_model=schemas.LinkedInSearchOut)
+@router.get("/listings/search", response_model=schemas.LinkedInSearchOut)
 def linkedin_search(q: str = Query(..., min_length=2), location: str = "", start: int = 0,
                     time_filter: str = "week", experience: str = "",
                     db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
@@ -85,7 +86,7 @@ def linkedin_search(q: str = Query(..., min_length=2), location: str = "", start
     try:
         results = linkedin.search_jobs(q.strip(), location.strip(), start=start, time_filter=tpr, experience=exp)
     except linkedin.LinkedInError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise opaque_502(log, "Web listings search failed", e)
 
     limit = settings.linkedin_paid_results_per_search if billing.is_paid(user) else settings.linkedin_free_results_per_search
     results = results[:limit]
@@ -119,7 +120,7 @@ def linkedin_search(q: str = Query(..., min_length=2), location: str = "", start
     return schemas.LinkedInSearchOut(jobs=out, searches_remaining_today=remaining)
 
 
-@router.get("/linkedin/preferences", response_model=schemas.LinkedInPreferencesOut)
+@router.get("/listings/preferences", response_model=schemas.LinkedInPreferencesOut)
 def get_linkedin_preferences(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     _require_linkedin_enabled()
     pref = db.query(models.JobSearchPreference).filter(models.JobSearchPreference.user_id == user.id).first()
@@ -131,7 +132,7 @@ def get_linkedin_preferences(db: Session = Depends(get_db), user: models.User = 
     )
 
 
-@router.put("/linkedin/preferences", response_model=schemas.LinkedInPreferencesOut)
+@router.put("/listings/preferences", response_model=schemas.LinkedInPreferencesOut)
 def put_linkedin_preferences(payload: schemas.LinkedInPreferencesIn, db: Session = Depends(get_db),
                              user: models.User = Depends(get_current_user)):
     _require_linkedin_enabled()
@@ -147,7 +148,7 @@ def put_linkedin_preferences(payload: schemas.LinkedInPreferencesIn, db: Session
     return payload
 
 
-@router.get("/linkedin/{job_id}", response_model=schemas.LinkedInJobDetailOut)
+@router.get("/listings/{job_id}", response_model=schemas.LinkedInJobDetailOut)
 def get_linkedin_job(job_id: str, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     _require_linkedin_enabled()
     cached = db.get(models.LinkedInJobCache, job_id)
@@ -158,7 +159,7 @@ def get_linkedin_job(job_id: str, db: Session = Depends(get_db), user: models.Us
         try:
             detail = linkedin.get_job_detail(job_id)
         except linkedin.LinkedInError as e:
-            raise HTTPException(status_code=502, detail=str(e))
+            raise opaque_502(log, "Could not load job details", e)
         cached.description = detail["description"]
         cached.description_hash = detail["description_hash"]
         cached.criteria = detail["criteria"]
@@ -170,7 +171,7 @@ def get_linkedin_job(job_id: str, db: Session = Depends(get_db), user: models.Us
     )
 
 
-@router.patch("/linkedin/{job_id}/action")
+@router.patch("/listings/{job_id}/action")
 def patch_linkedin_job_action(job_id: str, payload: schemas.LinkedInActionIn, db: Session = Depends(get_db),
                               user: models.User = Depends(get_current_user)):
     _require_linkedin_enabled()
@@ -232,7 +233,7 @@ def gemini_job_search(q: str = Query(..., min_length=2), location: str = "",
     try:
         results = gemini_search.search_jobs(q.strip(), location.strip(), limit=limit)
     except gemini_search.GeminiSearchError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise opaque_502(log, "AI search failed", e)
 
     out = []
     for j in results:
