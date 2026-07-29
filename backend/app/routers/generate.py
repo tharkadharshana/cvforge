@@ -1,5 +1,7 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from .. import models, schemas, billing, audit
 from ..config import settings
@@ -283,15 +285,32 @@ def improve_application(app_id: int, auto: bool = False, db: Session = Depends(g
 
 
 @router.get("/applications")
-def list_applications(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    apps = db.query(models.Application).filter(
+def list_applications(tracker_status: str | None = None, db: Session = Depends(get_db),
+                      user: models.User = Depends(get_current_user)):
+    q = db.query(models.Application).filter(
         models.Application.user_id == user.id, models.Application.status == "done"
-    ).order_by(models.Application.created_at.desc()).all()
+    )
+    if tracker_status:
+        q = q.filter(models.Application.tracker_status == tracker_status)
+    apps = q.order_by(models.Application.created_at.desc()).all()
     return [
         {"id": a.id, "job_title": a.job_title, "company": a.company,
-         "ats_score": a.ats_score, "created_at": a.created_at.isoformat()}
+         "ats_score": a.ats_score, "created_at": a.created_at.isoformat(),
+         "tracker_status": a.tracker_status,
+         "tracker_updated_at": a.tracker_updated_at.isoformat() if a.tracker_updated_at else None}
         for a in apps
     ]
+
+
+@router.get("/applications/stats")
+def application_stats(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    rows = (
+        db.query(models.Application.tracker_status, func.count())
+        .filter(models.Application.user_id == user.id, models.Application.status == "done")
+        .group_by(models.Application.tracker_status)
+        .all()
+    )
+    return {status: count for status, count in rows}
 
 
 def _get_app(db: Session, user: models.User, app_id: int) -> models.Application:
@@ -313,7 +332,21 @@ def get_application(app_id: int, db: Session = Depends(get_db), user: models.Use
         "ats_stale": bool(a.ats_stale),
         "template_id": a.template_id or "ats_classic",
         "template_overrides": a.template_overrides,
+        "tracker_status": a.tracker_status,
+        "tracker_updated_at": a.tracker_updated_at.isoformat() if a.tracker_updated_at else None,
     }
+
+
+@router.patch("/applications/{app_id}/tracker")
+def patch_tracker_status(app_id: int, payload: schemas.TrackerPatchIn,
+                         db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    a = _get_app(db, user, app_id)
+    a.tracker_status = payload.tracker_status
+    a.tracker_updated_at = datetime.now(timezone.utc)
+    db.commit()
+    audit.record("application_tracker", status="ok", user_id=user.id,
+                 meta={"application_id": a.id, "tracker_status": a.tracker_status})
+    return get_application(app_id, db, user)
 
 
 @router.get("/applications/{app_id}/autofill-profile", response_model=schemas.AutofillProfile)

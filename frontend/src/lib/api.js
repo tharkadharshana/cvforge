@@ -82,8 +82,12 @@ export const api = {
   cover: (jobId) => req(`/generate/${jobId}/cover`, { method: "POST" }),
   critique: (jobId) => req(`/generate/${jobId}/critique`, { method: "POST" }),
   getJob: (jobId) => req(`/generate/${jobId}`),
-  listApplications: () => req("/applications"),
+  listApplications: (trackerStatus = "") =>
+    req(`/applications${trackerStatus ? `?tracker_status=${encodeURIComponent(trackerStatus)}` : ""}`),
+  applicationStats: () => req("/applications/stats"),
   getApplication: (id) => req(`/applications/${id}`),
+  updateTrackerStatus: (id, tracker_status) =>
+    req(`/applications/${id}/tracker`, { method: "PATCH", body: { tracker_status } }),
   improveApplication: (id, auto = false) =>
     req(`/applications/${id}/improve${auto ? "?auto=true" : ""}`, { method: "POST" }),
   // partial update: { tailored_cv?, cover_letter?, template_id?, template_overrides? }

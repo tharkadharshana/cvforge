@@ -1,6 +1,6 @@
 from __future__ import annotations
 import typing
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
@@ -274,6 +274,17 @@ class GenerateJobOut(BaseModel):
     critique: Optional[CritiqueOut] = None
     ats_score: Optional[int] = None
     error: Optional[str] = None
+
+
+# ---------- application tracker ----------
+TrackerStatus = Literal[
+    "not_applied", "applied", "screening", "interview_1", "interview_2",
+    "offer", "hired", "rejected", "withdrawn", "ghosted",
+]
+
+
+class TrackerPatchIn(BaseModel):
+    tracker_status: TrackerStatus
 
 
 # ---------- manual editing & templates ----------
