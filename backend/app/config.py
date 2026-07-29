@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     # comma-separated emails granted admin/support access (audit + manual credit adjust)
     admin_emails: str = ""
 
+    # extra CORS origins beyond app_url/localhost, comma-separated (e.g. a custom
+    # domain that differs from app_url, or a www. alias). app_url is always allowed.
+    cors_origins: str = ""
+
     # --- billing / credits ---
     billing_enabled: bool = True
     app_url: str = "http://localhost:5173"          # frontend base, for checkout return

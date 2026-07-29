@@ -27,6 +27,7 @@ app = FastAPI(title="CVForge API", version="0.4.0")
 # allow_credentials=True forbids the "*" wildcard origin (browsers reject it),
 # so list explicit dev + configured frontend origins instead.
 _cors_origins = {settings.app_url, "http://localhost:5173", "http://127.0.0.1:5173"}
+_cors_origins.update(o.strip() for o in settings.cors_origins.split(",") if o.strip())
 
 app.add_middleware(
     CORSMiddleware,
