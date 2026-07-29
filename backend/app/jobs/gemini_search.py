@@ -6,6 +6,7 @@ key is configured (see enabled()).
 from __future__ import annotations
 import hashlib
 import json
+from datetime import datetime, timezone
 from ..config import settings
 from ..llm.base import call_with_key_rotation
 from ..logging_config import get_logger
@@ -42,9 +43,13 @@ markdown fences) of up to {limit} objects, each shaped exactly as:
 {{"title": "", "company": "", "location": "", "posted_at": "", "url": "", "description": ""}}
 
 - "url" must be the direct link to the original job posting (not a Google search result page).
+- "posted_at" must be an ISO 8601 date (YYYY-MM-DD) if you can determine or reasonably estimate
+  it from the listing (e.g. "posted 3 days ago" relative to today), else "". This is used to sort
+  results by recency alongside other job sources, so prefer a best-effort date over leaving it blank.
 - "description" should be a real summary of the role (2-6 sentences), not just the search snippet.
 - Omit listings you are not reasonably confident are real, current job postings.
 - If you find nothing relevant, return [].
+- Today's date is {today}.
 
 Query: {query}
 Location: {location}
@@ -83,7 +88,8 @@ def search_jobs(query: str, location: str = "", limit: int = 10) -> list[dict]:
     Raises GeminiSearchError on problems."""
     from google.genai import types
 
-    prompt = _PROMPT.format(limit=max(1, min(limit, 20)), query=query, location=location or "any")
+    today = datetime.now(timezone.utc).date().isoformat()
+    prompt = _PROMPT.format(limit=max(1, min(limit, 20)), query=query, location=location or "any", today=today)
     cfg = types.GenerateContentConfig(
         tools=[types.Tool(google_search=types.GoogleSearch())],
         temperature=0.2,
