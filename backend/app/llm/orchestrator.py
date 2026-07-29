@@ -3,6 +3,7 @@ from functools import lru_cache
 from .base import LLMProvider
 from .deepseek import DeepSeekProvider
 from .gemini import GeminiProvider
+from .openai_provider import OpenAIProvider
 from ..config import settings
 from ..logging_config import get_logger
 
@@ -11,6 +12,7 @@ log = get_logger("llm")
 _REGISTRY: dict[str, type[LLMProvider]] = {
     "deepseek": DeepSeekProvider,
     "gemini": GeminiProvider,
+    "openai": OpenAIProvider,
 }
 
 
@@ -22,40 +24,44 @@ def _provider(name: str) -> LLMProvider:
     return _REGISTRY[name]()
 
 
-class _FallbackProvider:
-    """Tries `primary` first; on failure (after primary's own retries are
-    exhausted) retries the same request against `fallback`."""
+class _ChainProvider:
+    """Tries each provider in order; on failure (after that provider's own
+    key-rotation retries are exhausted) falls through to the next. Raises the
+    last provider's error if every one fails."""
 
-    def __init__(self, primary: LLMProvider, fallback: LLMProvider):
-        self.primary = primary
-        self.fallback = fallback
-        self.name = f"{primary.name}(fallback={fallback.name})"
+    def __init__(self, providers: list[LLMProvider]):
+        self.providers = providers
+        self.name = "->".join(p.name for p in providers)
+
+    def _run(self, method: str, *args, **kwargs):
+        last_exc: Exception | None = None
+        for i, p in enumerate(self.providers):
+            try:
+                return getattr(p, method)(*args, **kwargs)
+            except Exception as e:
+                last_exc = e
+                if i < len(self.providers) - 1:
+                    log.warning("%s failed, falling back to %s: %s", p.name, self.providers[i + 1].name, e)
+                    continue
+                raise
+        raise last_exc  # pragma: no cover -- unreachable, providers is never empty
 
     def complete(self, system: str, user: str, json_mode: bool = False, pro: bool = False) -> str:
-        try:
-            return self.primary.complete(system, user, json_mode, pro)
-        except Exception as e:
-            log.warning("%s failed, falling back to %s: %s", self.primary.name, self.fallback.name, e)
-            return self.fallback.complete(system, user, json_mode, pro)
+        return self._run("complete", system, user, json_mode, pro)
 
     def complete_json(self, system: str, user: str, pro: bool = False) -> dict:
-        try:
-            return self.primary.complete_json(system, user, pro)
-        except Exception as e:
-            log.warning("%s failed, falling back to %s: %s", self.primary.name, self.fallback.name, e)
-            return self.fallback.complete_json(system, user, pro)
+        return self._run("complete_json", system, user, pro)
 
 
-def _with_fallback(primary_name: str, fallback_name: str) -> LLMProvider:
-    primary = _provider(primary_name)
-    if not fallback_name or fallback_name.lower() == primary_name.lower():
-        return primary
-    return _FallbackProvider(primary, _provider(fallback_name))
+def _chain() -> LLMProvider:
+    names = [n.strip() for n in settings.llm_provider_chain.split(",") if n.strip()]
+    providers = [_provider(n) for n in names]
+    return providers[0] if len(providers) == 1 else _ChainProvider(providers)
 
 
 def drafter() -> LLMProvider:
-    return _with_fallback(settings.drafter_provider, settings.drafter_fallback_provider)
+    return _chain()
 
 
 def critic() -> LLMProvider:
-    return _with_fallback(settings.critic_provider, settings.critic_fallback_provider)
+    return _chain()
