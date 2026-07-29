@@ -12,7 +12,6 @@ import Register from "./pages/Register";
 import Onboarding from "./pages/Onboarding";
 import BaseCV from "./pages/BaseCV";
 import Generate from "./pages/Generate";
-import Jobs from "./pages/Jobs";
 import JobSearch from "./pages/JobSearch";
 import Applications from "./pages/Applications";
 import ApplicationDetail from "./pages/ApplicationDetail";
@@ -42,8 +41,8 @@ export default function App() {
               <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/cv" element={<BaseCV />} />
               <Route path="/generate" element={<Generate />} />
-              <Route path="/jobs" element={<Jobs />} />
               <Route path="/jobs/linkedin" element={<JobSearch />} />
+              <Route path="/jobs" element={<Navigate to="/jobs/linkedin" replace />} />
               <Route path="/applications" element={<Applications />} />
               <Route path="/applications/:id" element={<ApplicationDetail />} />
               <Route path="/billing" element={<Billing />} />

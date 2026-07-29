@@ -3,16 +3,19 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { Banner, Spinner } from "../components/ui";
 
-// Combined job discovery: LinkedIn's public listing pages + Gemini's live web
-// search, merged into one result list ordered by most-recently-posted. Each
-// source is independently optional (LinkedIn off by default server-side, see
-// docs/LEGAL_NOTES.md; Gemini auto-enabled when a key is configured) -- if one
-// is unavailable the other's results still show.
+// Combined job discovery: Adzuna's job board + LinkedIn's public listing pages
+// + Gemini/OpenAI live web search, merged into one result list ordered by
+// most-recently-posted. Each source is independently optional (Adzuna/LinkedIn
+// need config, see docs/LEGAL_NOTES.md for LinkedIn) -- if one is unavailable
+// the others' results still show. Adzuna doesn't expose a post date or
+// per-user save/dismiss state, so its listings sort last and skip those actions.
 
 function postedAtMs(job) {
   const t = job.posted_at ? Date.parse(job.posted_at) : NaN;
   return Number.isNaN(t) ? -Infinity : t;  // undated listings sort last
 }
+
+const SOURCE_LABELS = { adzuna: "Job board", linkedin: "LinkedIn", gemini: "AI search" };
 
 export default function JobSearch() {
   const nav = useNavigate();
@@ -21,6 +24,7 @@ export default function JobSearch() {
   const [jobs, setJobs] = useState(null);
   const [linkedinRemaining, setLinkedinRemaining] = useState(null);
   const [geminiRemaining, setGeminiRemaining] = useState(null);
+  const [adzunaError, setAdzunaError] = useState("");
   const [linkedinError, setLinkedinError] = useState("");
   const [geminiError, setGeminiError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -33,14 +37,25 @@ export default function JobSearch() {
 
   const run = async () => {
     if (q.trim().length < 2) return;
-    setErr(""); setLinkedinError(""); setGeminiError(""); setBusy(true); setExpandedKey(null); setDetail(null);
+    setErr(""); setAdzunaError(""); setLinkedinError(""); setGeminiError("");
+    setBusy(true); setExpandedKey(null); setDetail(null);
 
-    const [li, gm] = await Promise.allSettled([
+    const [az, li, gm] = await Promise.allSettled([
+      api.searchJobs(q.trim(), loc.trim(), 1),
       api.linkedinSearch({ q: q.trim(), location: loc.trim() }),
       api.geminiSearch({ q: q.trim(), location: loc.trim() }),
     ]);
 
     const merged = [];
+    if (az.status === "fulfilled" && az.value.enabled) {
+      merged.push(...az.value.results.map((j) => ({
+        job_id: j.id, title: j.title, company: j.company, location: j.location,
+        url: j.url, description: j.description, posted_at: "", saved: false, dismissed: false,
+        source: "adzuna",
+      })));
+    } else if (az.status === "rejected") {
+      setAdzunaError(az.reason?.message || "Job board search failed.");
+    }
     if (li.status === "fulfilled") {
       merged.push(...li.value.jobs.map((j) => ({ ...j, source: "linkedin" })));
       setLinkedinRemaining(li.value.searches_remaining_today);
@@ -62,14 +77,21 @@ export default function JobSearch() {
     setBusy(false);
   };
 
-  const detailApi = (source) => (source === "linkedin" ? api.linkedinJobDetail : api.geminiJobDetail);
+  // Adzuna already returns the full description in the search response and has
+  // no per-user save/dismiss backing table, so its "detail fetch" just echoes
+  // the job already in hand instead of calling an endpoint that doesn't exist.
+  const detailApi = (source) => {
+    if (source === "linkedin") return api.linkedinJobDetail;
+    if (source === "gemini") return api.geminiJobDetail;
+    return (job_id, job) => Promise.resolve({ job_id, description: job?.description || "" });
+  };
   const actionApi = (source) => (source === "linkedin" ? api.linkedinJobAction : api.geminiJobAction);
 
   const toggleExpand = async (job) => {
     const k = key(job);
     if (expandedKey === k) { setExpandedKey(null); setDetail(null); return; }
     setExpandedKey(k); setDetail(null); setDetailBusy(true);
-    try { setDetail({ ...(await detailApi(job.source)(job.job_id)), source: job.source }); }
+    try { setDetail({ ...(await detailApi(job.source)(job.job_id, job)), source: job.source }); }
     catch (e) { setErr(e.message); }
     finally { setDetailBusy(false); }
   };
@@ -90,7 +112,7 @@ export default function JobSearch() {
   const generateFor = async (job) => {
     let d = detail && detail.job_id === job.job_id && detail.source === job.source ? detail : null;
     if (!d) {
-      try { d = await detailApi(job.source)(job.job_id); }
+      try { d = await detailApi(job.source)(job.job_id, job); }
       catch (e) { setErr(e.message); return; }
     }
     nav("/generate", { state: { job_description: d.description, company: job.company, job_title: job.title } });
@@ -100,11 +122,12 @@ export default function JobSearch() {
     <div className="rise">
       <h1 className="font-display font-extrabold text-3xl mb-1">Job search</h1>
       <p className="label mb-3">
-        Search LinkedIn's public listings and live web results together, then forge a tailored CV in a click.
+        Search a job board, LinkedIn's public listings, and live web results together, then forge a
+        tailored CV in a click.
       </p>
       <Banner kind="info">
         Listings are sourced from third-party sites and provided as-is. CVForge is not affiliated with
-        LinkedIn or any listed employer. Verify details on the original posting before applying.
+        LinkedIn, Adzuna, or any listed employer. Verify details on the original posting before applying.
       </Banner>
 
       <div className="flex flex-col sm:flex-row gap-2 mt-4">
@@ -118,6 +141,7 @@ export default function JobSearch() {
       </div>
 
       {err && <div className="mt-4"><Banner>{err}</Banner></div>}
+      {adzunaError && <div className="mt-4"><Banner>Job board: {adzunaError}</Banner></div>}
       {linkedinError && <div className="mt-4"><Banner>LinkedIn: {linkedinError}</Banner></div>}
       {geminiError && <div className="mt-4"><Banner>AI search: {geminiError}</Banner></div>}
       {busy && <div className="mt-4"><Spinner label="Searching listings" /></div>}
@@ -142,17 +166,21 @@ export default function JobSearch() {
                 <div className="font-display font-semibold text-[15px]">{job.title}</div>
                 <div className="font-mono text-[12px] text-muted">
                   {[job.company, job.location].filter(Boolean).join(" · ") || "—"}
-                  {" · "}<span className="tag border-line2">{job.source === "linkedin" ? "LinkedIn" : "AI search"}</span>
+                  {" · "}<span className="tag border-line2">{SOURCE_LABELS[job.source]}</span>
                 </div>
               </div>
               <div className="flex gap-2 shrink-0">
                 <button className="btn-ghost text-[11px] px-3 py-2" onClick={() => toggleExpand(job)}>
                   {expandedKey === key(job) ? "Hide" : "View"}
                 </button>
-                <button className="btn-ghost text-[11px] px-3 py-2" onClick={() => toggleSave(job)}>
-                  {job.saved ? "★ Saved" : "☆ Save"}
-                </button>
-                <button className="btn-ghost text-[11px] px-3 py-2" onClick={() => dismiss(job)}>Dismiss</button>
+                {job.source !== "adzuna" && (
+                  <>
+                    <button className="btn-ghost text-[11px] px-3 py-2" onClick={() => toggleSave(job)}>
+                      {job.saved ? "★ Saved" : "☆ Save"}
+                    </button>
+                    <button className="btn-ghost text-[11px] px-3 py-2" onClick={() => dismiss(job)}>Dismiss</button>
+                  </>
+                )}
                 {job.url && (
                   <a href={job.url} target="_blank" rel="noreferrer" className="btn-ghost text-[11px] px-3 py-2">Apply ↗</a>
                 )}
