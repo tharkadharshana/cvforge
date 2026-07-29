@@ -99,6 +99,10 @@ def linkedin_search(q: str = Query(..., min_length=2), location: str = "", start
         cached.title, cached.company, cached.location, cached.posted_at, cached.url = (
             j["title"], j["company"], j["location"], j["posted_at"], j["url"]
         )
+        # job_search_results.job_id has no ORM relationship() back to this table
+        # (just a bare FK column), so the unit-of-work has no dependency info to
+        # order the insert -- flush explicitly so the cache row exists first.
+        db.flush()
 
         row = db.query(models.JobSearchResult).filter(
             models.JobSearchResult.user_id == user.id, models.JobSearchResult.job_id == j["job_id"]
@@ -239,6 +243,8 @@ def gemini_job_search(q: str = Query(..., min_length=2), location: str = "",
         cached.title, cached.company, cached.location, cached.posted_at, cached.url, cached.description = (
             j["title"], j["company"], j["location"], j["posted_at"], j["url"], j["description"]
         )
+        # same ordering gap as linkedin_search above -- flush the cache row first.
+        db.flush()
 
         row = db.query(models.GeminiSearchResult).filter(
             models.GeminiSearchResult.user_id == user.id, models.GeminiSearchResult.job_id == j["job_id"]
