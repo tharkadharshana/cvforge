@@ -1,10 +1,16 @@
 name: Backend smoke test (deployed)
 
 # Exercises the live Vercel deployment end-to-end: auth, DB, both LLM
-# providers, the full generation pipeline, billing/credits, and downloads.
-# This creates a real user, runs real LLM calls, and spends 1 real credit —
-# so it does NOT run on every push. Run it manually after a deploy, or on
-# the weekly schedule.
+# providers, base CV + writing style profile, job fit scoring, the full
+# generation pipeline, application tracker, ATS text-layer verification,
+# downloads, and billing/subscription (checkout, webhook credit grants,
+# idempotency, signature security, subscription cancellation). This creates
+# a real user, runs real LLM calls, and spends 1 real credit — so it does
+# NOT run on every push. Run it manually after a deploy, or on the weekly
+# schedule.
+#
+# Set the POLAR_WEBHOOK_SECRET repo/environment secret to also exercise the
+# webhook-driven billing steps; without it those steps are skipped.
 
 on:
   workflow_dispatch:
@@ -23,9 +29,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install signing dependency
+        run: pip install standardwebhooks
+
       - name: Run smoke test
         env:
           BASE_URL: ${{ inputs.base_url || 'https://cvforge-backend.vercel.app' }}
+          POLAR_WEBHOOK_SECRET: ${{ secrets.POLAR_WEBHOOK_SECRET }}
         run: |
           chmod +x backend/scripts/smoke-test.sh
           backend/scripts/smoke-test.sh
