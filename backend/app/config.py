@@ -64,6 +64,15 @@ class Settings(BaseSettings):
     linkedin_free_results_per_search: int = 10
     linkedin_paid_results_per_search: int = 50
 
+    # --- Gemini job discovery (google_search grounding tool) ---
+    # Auto-enabled whenever a Gemini key is configured (gemini_api_key/gemini_api_keys) —
+    # this legitimately uses Google's own search grounding API, no ToS risk like the
+    # LinkedIn scraper, so there's no separate opt-in flag.
+    gemini_search_model: str = "gemini-2.0-flash"   # must be a model version that supports the google_search tool
+    gemini_free_daily_searches: int = 3
+    gemini_free_results_per_search: int = 10
+    gemini_paid_results_per_search: int = 50
+
     # comma-separated emails granted admin/support access (audit + manual credit adjust)
     admin_emails: str = ""
 
