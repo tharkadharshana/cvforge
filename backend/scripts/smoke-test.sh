@@ -252,22 +252,27 @@ req POST /billing/portal "${AUTH[@]}"
 pass "billing/portal blocked before first purchase"
 
 # 26-30. Webhook-driven billing: only runs if we have the signing secret, a
-# Python with `standardwebhooks` installed, and the secret actually parses
-# (the standardwebhooks lib only auto-strips a "whsec_" prefix — a
-# differently-prefixed or malformed secret raises here rather than in the
-# app itself, which is worth surfacing loudly since it means the real
-# deployment would also reject every genuine Polar webhook).
+# Python with `standardwebhooks` installed, and the secret actually decodes
+# once normalized the same way app/payments/polar.py::_webhook_secret_bytes
+# does (Polar's own secrets are `polar_whs_` + base64url, no padding — not
+# the generic `whsec_` + standard-base64 the library expects out of the box).
 WEBHOOK_SECRET_OK=""
 if [ -n "${POLAR_WEBHOOK_SECRET:-}" ] && [ -n "$PY" ]; then
   if "$PY" -c "
-import os
+import os, base64
 from standardwebhooks import Webhook
-Webhook(os.environ['POLAR_WEBHOOK_SECRET'])
+secret = os.environ['POLAR_WEBHOOK_SECRET']
+for prefix in ('whsec_', 'polar_whs_'):
+    if secret.startswith(prefix):
+        secret = secret[len(prefix):]
+        break
+Webhook(base64.urlsafe_b64decode(secret + '=' * (-len(secret) % 4)))
 " >/dev/null 2>&1; then
     WEBHOOK_SECRET_OK=1
   else
-    echo "WARNING: POLAR_WEBHOOK_SECRET is set but does not parse as a valid Standard Webhooks secret." >&2
-    echo "         This means the real deployment likely rejects genuine Polar webhooks too — check the Polar dashboard." >&2
+    echo "WARNING: POLAR_WEBHOOK_SECRET is set but does not decode to a usable key even after" >&2
+    echo "         stripping known prefixes (whsec_/polar_whs_) and base64url-decoding. Check the" >&2
+    echo "         value against the Polar dashboard — the app itself will also reject webhooks." >&2
   fi
 fi
 if [ -n "$WEBHOOK_SECRET_OK" ]; then
@@ -275,12 +280,19 @@ if [ -n "$WEBHOOK_SECRET_OK" ]; then
     # sign_webhook <json-body> -> writes headers to $WH_HEADERS_FILE, signed body to stdout
     local body="$1"
     "$PY" - "$body" <<'PYEOF'
-import sys, json, datetime
+import sys, json, datetime, base64
 from standardwebhooks import Webhook
 
 body = sys.argv[1]
 secret = __import__("os").environ["POLAR_WEBHOOK_SECRET"]
-wh = Webhook(secret)
+# Same normalization as app/payments/polar.py::_webhook_secret_bytes — Polar's own
+# secret format (polar_whs_ + base64url, no padding) isn't what Webhook(str) expects.
+for prefix in ("whsec_", "polar_whs_"):
+    if secret.startswith(prefix):
+        secret = secret[len(prefix):]
+        break
+secret_bytes = base64.urlsafe_b64decode(secret + "=" * (-len(secret) % 4))
+wh = Webhook(secret_bytes)
 msg_id = "msg_smoketest_" + str(int(datetime.datetime.now().timestamp()))
 ts = datetime.datetime.now(datetime.timezone.utc)
 sig = wh.sign(msg_id, ts, body)
