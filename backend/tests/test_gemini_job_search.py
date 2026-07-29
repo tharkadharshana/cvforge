@@ -88,7 +88,7 @@ def test_quota_is_independent_from_linkedin(client, monkeypatch):
         r = client.get("/jobs/gemini/search?q=dev", headers=H)
         assert r.status_code == 200
         # interleave a LinkedIn search -- must not consume the Gemini counter
-        client.get("/jobs/linkedin/search?q=dev", headers=H)
+        client.get("/jobs/listings/search?q=dev", headers=H)
 
     r = client.get("/jobs/gemini/search?q=dev", headers=H)
     assert r.status_code == 429

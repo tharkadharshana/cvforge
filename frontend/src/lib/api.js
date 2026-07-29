@@ -108,15 +108,17 @@ export const api = {
   searchJobs: (q, location = "", page = 1) =>
     req(`/jobs/search?q=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}&page=${page}`),
 
-  // LinkedIn job discovery (off by default server-side; see docs/LEGAL_NOTES.md)
+  // web listings source (off by default server-side; see docs/LEGAL_NOTES.md).
+  // Route path is deliberately source-agnostic -- avoid naming the upstream
+  // site in anything user- or network-visible.
   linkedinSearch: ({ q, location = "", start = 0, timeFilter = "week", experience = "" }) =>
-    req(`/jobs/linkedin/search?q=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}` +
+    req(`/jobs/listings/search?q=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}` +
         `&start=${start}&time_filter=${timeFilter}&experience=${experience}`),
-  linkedinJobDetail: (jobId) => req(`/jobs/linkedin/${encodeURIComponent(jobId)}`),
+  linkedinJobDetail: (jobId) => req(`/jobs/listings/${encodeURIComponent(jobId)}`),
   linkedinJobAction: (jobId, action) =>
-    req(`/jobs/linkedin/${encodeURIComponent(jobId)}/action`, { method: "PATCH", body: { action } }),
-  linkedinGetPreferences: () => req("/jobs/linkedin/preferences"),
-  linkedinPutPreferences: (prefs) => req("/jobs/linkedin/preferences", { method: "PUT", body: prefs }),
+    req(`/jobs/listings/${encodeURIComponent(jobId)}/action`, { method: "PATCH", body: { action } }),
+  linkedinGetPreferences: () => req("/jobs/listings/preferences"),
+  linkedinPutPreferences: (prefs) => req("/jobs/listings/preferences", { method: "PUT", body: prefs }),
 
   // Gemini google_search-grounded job discovery (auto-enabled when GEMINI_API_KEY is set)
   geminiSearch: ({ q, location = "" }) =>

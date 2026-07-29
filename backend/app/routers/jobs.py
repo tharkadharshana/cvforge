@@ -46,7 +46,7 @@ def search_jobs(q: str = Query(..., min_length=2), location: str = "", page: int
 
 def _require_linkedin_enabled():
     if not settings.linkedin_search_enabled:
-        raise HTTPException(status_code=404, detail="LinkedIn job search is not enabled on this server")
+        raise HTTPException(status_code=404, detail="This job search source is not enabled on this server")
 
 
 def _today() -> str:
@@ -73,7 +73,7 @@ def _check_and_bump_search_quota(db: Session, user: models.User) -> int | None:
     return limit - row.search_count
 
 
-@router.get("/linkedin/search", response_model=schemas.LinkedInSearchOut)
+@router.get("/listings/search", response_model=schemas.LinkedInSearchOut)
 def linkedin_search(q: str = Query(..., min_length=2), location: str = "", start: int = 0,
                     time_filter: str = "week", experience: str = "",
                     db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
@@ -119,7 +119,7 @@ def linkedin_search(q: str = Query(..., min_length=2), location: str = "", start
     return schemas.LinkedInSearchOut(jobs=out, searches_remaining_today=remaining)
 
 
-@router.get("/linkedin/preferences", response_model=schemas.LinkedInPreferencesOut)
+@router.get("/listings/preferences", response_model=schemas.LinkedInPreferencesOut)
 def get_linkedin_preferences(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     _require_linkedin_enabled()
     pref = db.query(models.JobSearchPreference).filter(models.JobSearchPreference.user_id == user.id).first()
@@ -131,7 +131,7 @@ def get_linkedin_preferences(db: Session = Depends(get_db), user: models.User = 
     )
 
 
-@router.put("/linkedin/preferences", response_model=schemas.LinkedInPreferencesOut)
+@router.put("/listings/preferences", response_model=schemas.LinkedInPreferencesOut)
 def put_linkedin_preferences(payload: schemas.LinkedInPreferencesIn, db: Session = Depends(get_db),
                              user: models.User = Depends(get_current_user)):
     _require_linkedin_enabled()
@@ -147,7 +147,7 @@ def put_linkedin_preferences(payload: schemas.LinkedInPreferencesIn, db: Session
     return payload
 
 
-@router.get("/linkedin/{job_id}", response_model=schemas.LinkedInJobDetailOut)
+@router.get("/listings/{job_id}", response_model=schemas.LinkedInJobDetailOut)
 def get_linkedin_job(job_id: str, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     _require_linkedin_enabled()
     cached = db.get(models.LinkedInJobCache, job_id)
@@ -170,7 +170,7 @@ def get_linkedin_job(job_id: str, db: Session = Depends(get_db), user: models.Us
     )
 
 
-@router.patch("/linkedin/{job_id}/action")
+@router.patch("/listings/{job_id}/action")
 def patch_linkedin_job_action(job_id: str, payload: schemas.LinkedInActionIn, db: Session = Depends(get_db),
                               user: models.User = Depends(get_current_user)):
     _require_linkedin_enabled()

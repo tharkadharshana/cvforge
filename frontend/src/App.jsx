@@ -41,8 +41,9 @@ export default function App() {
               <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/cv" element={<BaseCV />} />
               <Route path="/generate" element={<Generate />} />
-              <Route path="/jobs/linkedin" element={<JobSearch />} />
-              <Route path="/jobs" element={<Navigate to="/jobs/linkedin" replace />} />
+              <Route path="/jobs/search" element={<JobSearch />} />
+              <Route path="/jobs" element={<Navigate to="/jobs/search" replace />} />
+              <Route path="/jobs/linkedin" element={<Navigate to="/jobs/search" replace />} />
               <Route path="/applications" element={<Applications />} />
               <Route path="/applications/:id" element={<ApplicationDetail />} />
               <Route path="/billing" element={<Billing />} />
