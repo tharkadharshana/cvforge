@@ -1,14 +1,21 @@
 # CV Templates
 
-Two files, both required, ids must match between them. Source of truth:
-`app/cv/templates.py` (backend) and `frontend/src/templates/registry.jsx` (frontend).
+Spec for creating a new CV template — the exact data contract, the render
+contract, and the hard rules a template must follow. Written so a template
+can be produced (by a person or an AI) from this document alone, without
+needing to read the rest of the codebase.
+
+A template is registered in two places, and both must use the same id:
+
+1. A **catalog entry** — name, whether it's ATS-safe, and style tokens (or,
+   for a designer template, nothing beyond identity — see below).
+2. A **renderer** — a function that takes CV data and produces the visual layout.
 
 ## The data contract: `CVData`
 
-Every template renders the same shape, always — this is the one structure you
-need to know, defined in `backend/app/schemas.py`. All fields have defaults
+Every template renders the same shape, always. All fields have defaults
 (empty string / empty list / `{}`), so a template must handle any field being
-empty, never assume it's populated.
+empty — never assume it's populated.
 
 ```jsonc
 {
@@ -36,33 +43,32 @@ empty, never assume it's populated.
 Notes:
 
 - `start`/`end` are free-text strings (e.g. `"Jan 2023"`, `"Present"`), not dates — join with `" – "`, don't parse them.
-- Every list field can be empty — guard every section with `.length > 0` (see any existing template).
-- This is the exact object both the backend PDF/DOCX renderer and every frontend template receive. There is no separate "preview data" format — `frontend/src/templates/sampleCv.js` is just a hand-written example of this same shape, used by `/templates` for the zero-cost gallery.
+- Every list field can be empty — guard every section with `.length > 0` (see the reference implementations below).
+- This is the exact object both the PDF/DOCX renderer and every on-screen template receive — no separate "preview data" format.
 
 ## Two kinds of template
 
-- **ATS-safe** (`ats_safe: True`): single-column, rendered by the pure-Python
-  backend (`cv/render.py`) into the actual downloadable PDF/DOCX. This is what
-  the ATS critic scores and what gets uploaded to job sites. **You do not write
-  any backend rendering code for these** — `cv/render.py` has one shared
-  PDF renderer and one shared DOCX renderer for *all* ats_safe templates; a new
-  template only ever contributes a `style` dict (see below), never new render logic.
-- **Designer** (`ats_safe: False`): sidebars, color blocks, 2-column layouts —
-  rendered client-side only (React + print-to-PDF), for a human to look at.
-  Never scored, never downloaded as the "ATS" file — the backend silently
-  falls back to the default ATS-safe style for the scored/download copy
-  regardless of which designer template is selected on screen. **These do
-  require a frontend React component** since there's no backend equivalent to fall back on visually.
+- **ATS-safe**: single-column, rendered into the actual downloadable PDF/DOCX
+  that gets scored and uploaded to job sites. **No custom rendering code is
+  needed for these** — one shared PDF renderer and one shared DOCX renderer
+  handle *every* ATS-safe template; a new one only ever contributes a `style`
+  dict (see below), never new render logic.
+- **Designer**: sidebars, color blocks, 2-column layouts — rendered on-screen
+  only, for a human to look at. Never scored, never downloaded as the "ATS"
+  file — the system silently falls back to the default ATS-safe style for the
+  scored/download copy regardless of which designer template is selected on
+  screen. **These do require a custom render function** since there's no
+  shared renderer to fall back on visually.
 
 ## Existing ids — don't collide
 
-`ats_classic`, `ats_modern`, `ats_serif`, `aurora`, `sidebar_pro`. A new template
-needs a new id in both files. Nothing checks for a typo'd or duplicate id — see
-the gotcha at the end of this doc.
+`ats_classic`, `ats_modern`, `ats_serif`, `aurora`, `sidebar_pro`. A new
+template needs a new, unique id used identically in both the catalog entry
+and the renderer. Nothing validates this automatically — see the gotcha below.
 
 ## Adding one
 
-### 1. `backend/app/cv/templates.py` — add to the `TEMPLATES` dict
+### 1. Catalog entry (style tokens)
 
 ```python
 "my_template": {
@@ -74,22 +80,22 @@ the gotcha at the end of this doc.
 },
 ```
 
-Style keys the shared backend renderer reads:
+Style keys the shared ATS-safe renderer reads:
 
 | key | values | notes |
 |---|---|---|
-| `font` | `Helvetica` / `Times` / `Courier` | must be a core PDF font. Anything else silently maps to a fallback in `render.py`'s `_PDF_FONT`/`_DOCX_FONT` dicts (`Helvetica`→Calibri in docx, etc) — using a non-core name doesn't error, it just quietly renders as the fallback, so stick to the three above |
+| `font` | `Helvetica` / `Times` / `Courier` | must be a core PDF font. Anything else silently maps to a fallback (e.g. `Helvetica`→Calibri for the DOCX output) — using a non-core name doesn't error, it just quietly renders as the fallback, so stick to the three above |
 | `accent` | hex color, e.g. `"#1A1A1A"` | headings/name color; keep dark enough to scan/print cleanly |
 | `heading` | `rule` / `plain` / `caps` | section heading style |
 | `name_size` / `body_size` | point size (float) | |
-| `columns` | `1` for `ats_safe` (always forced to 1 regardless of what you put here — designer templates ignore this key entirely, column layout is hardcoded in the React component) | |
+| `columns` | `1` for ATS-safe (always forced to 1 regardless of what you put here — designer templates ignore this key entirely, column layout is hardcoded in the renderer) | |
 
-This entry alone drives the `/generate/templates` catalog and the backend PDF/DOCX
-renderer for `ats_safe: True` templates — no code, just data.
+This entry alone drives the template catalog and the shared PDF/DOCX
+renderer for ATS-safe templates — no rendering code, just data.
 
-### 2. `frontend/src/templates/registry.jsx` — mirror the same id
+### 2. Renderer
 
-For an ATS-safe template, reuse `SingleColumn` (matches what the backend renders):
+For an ATS-safe template, reuse the single-column reference renderer (matches what gets downloaded):
 
 ```jsx
 my_template: {
@@ -99,7 +105,7 @@ my_template: {
 },
 ```
 
-For a designer template, reuse `Sidebar` (2-column, colored sidebar):
+For a designer template, reuse the sidebar reference renderer (2-column, colored sidebar):
 
 ```jsx
 my_designer: {
@@ -109,20 +115,19 @@ my_designer: {
 },
 ```
 
-`render` is the whole contract: a function `(cv: CVData) => JSX.Element`, given
-the exact object shape documented above. Both `SingleColumn` and `Sidebar` live
-in `frontend/src/templates/`.
+`render` is the whole contract: a function `(cv: CVData) => JSX.Element`,
+given the exact object shape documented above.
 
 ### 3. Building a brand-new layout (not just new colors/fonts)
 
-If neither `SingleColumn` nor `Sidebar`'s structure fits, write a new component
-in `frontend/src/templates/`, following the same shape as those two:
+If neither reference renderer's structure fits, write a new render function
+following the same shape as those two:
 
 ```jsx
 import { Page, contactBits, hasSkills } from "./common";
 
 export default function MyLayout({ cv, accent = "#1a1a1a", font = "Helvetica, Arial, sans-serif" }) {
-  if (!cv) return null;               // guard: registry may call this before data loads
+  if (!cv) return null;               // guard: may be called before data loads
   const c = cv.contact || {};
 
   return (
@@ -149,60 +154,47 @@ export default function MyLayout({ cv, accent = "#1a1a1a", font = "Helvetica, Ar
 }
 ```
 
-Hard rules for any new component (all come from how print/preview actually works — breaking them breaks the download or the preview, not just looks):
+Hard rules for any new renderer (all come from how print/preview actually works — breaking them breaks the download or the preview, not just looks):
 
-- **Inline styles only, no Tailwind classes, no dark-theme awareness.** Templates render on a white page for print-to-PDF (`window.print()`) and the live preview — they must look identical regardless of the app's own theme. Every existing template does 100% inline `style={{...}}`.
-- **Wrap the whole thing in `<Page>`** (from `./common`) — it sets the `210mm` A4 width/height every renderer and the print CSS (`.cv-print-root` in `index.css`) assumes.
-- **Guard every optional field.** `cv.experience?.length > 0`, `hasSkills(cv)`, etc. — an empty base CV must render without crashing (this is exactly what `/templates`'s sample-data gallery exercises, but real user CVs will have gaps too).
-- **`contactBits(c)`** (from `./common`) returns the non-empty contact fields already filtered and ready to join — use it instead of hand-rolling the same filter.
-- If `ats_safe: True`, keep the layout single-column and close to `SingleColumn`'s structure — the point of ATS-safe is that it matches what the backend actually renders into the downloaded file; a wildly different frontend layout for an `ats_safe` id would mislead the user about what they're going to download.
+- **Inline styles only, no utility CSS classes, no dark-theme awareness.** Templates render on a white page for print-to-PDF and the live preview — they must look identical regardless of the app's own theme. Every reference renderer does 100% inline `style={{...}}`.
+- **Wrap the whole thing in `Page`** — it sets the `210mm` A4 width/height every renderer and the print stylesheet assumes.
+- **Guard every optional field.** `cv.experience?.length > 0`, `hasSkills(cv)`, etc. — an empty CV must render without crashing (this is exactly what the free sample-data preview exercises, but real user CVs will have gaps too).
+- **`contactBits(c)`** returns the non-empty contact fields already filtered and ready to join — use it instead of hand-rolling the same filter.
+- If ATS-safe, keep the layout single-column and close to the single-column reference structure — the point of ATS-safe is that it matches what actually gets downloaded; a wildly different on-screen layout for an ATS-safe id would mislead the user about what they're going to download.
 
 ### That's it
 
-No other file needs to know about the new id. These two registries feed
-everything that shows templates:
-
-- `TemplatePicker` (`frontend/src/components/TemplatePicker.jsx`) — the picker
-  shown on Generate (pre-generation) and ApplicationDetail (post-generation)
-- `/templates` — the free preview gallery (`frontend/src/pages/TemplateGallery.jsx`),
-  renders every registry entry against a hardcoded sample CV
-  (`frontend/src/templates/sampleCv.js`), no backend/LLM call
-- `GET /generate/templates` — the backend catalog endpoint, built from
-  `cv/templates.py::catalog()`
+No other part of the system needs to know about the new id. The catalog and
+renderer feed everything that shows templates: the template picker (shown
+before and after generating a CV), the free preview gallery, and the template
+catalog endpoint.
 
 ## Testing a new template
 
-1. Add both entries above (three if you wrote a new component).
-2. Run the frontend (`npm run dev`) and open `/templates` — confirms the render
-   works against sample data, free, no credits, and catches any crash on
-   missing/empty fields immediately.
-3. Generate a real CV once with the new `template_id` and download both PDF and
-   DOCX (`cv/render.py`'s two renderers are separate code paths — check both if
-   `ats_safe: True`).
+1. Add both entries above (three if you wrote a new renderer).
+2. Open the free preview gallery — confirms the render works against sample
+   data, free, no credits, and catches any crash on missing/empty fields immediately.
+3. Generate a real CV once with the new template id and download both PDF and
+   DOCX — the two output formats are separate render paths, check both if ATS-safe.
 
-## Gotcha: the two registries are not validated against each other
+## Gotcha: the catalog and renderer are not validated against each other
 
-Nothing enforces that an id in `backend/app/cv/templates.py` has a matching
-entry in `frontend/src/templates/registry.jsx`, or vice versa — there's no
-test, no build check, no runtime error. A mismatch (typo, or added one side
-and forgot the other) fails **silently**:
-
-- Backend `get_template()` falls back to `ats_classic` for any unknown id.
-- Frontend `renderTemplate()` (`TEMPLATES[templateId] || TEMPLATES[DEFAULT_TEMPLATE_ID]`)
-  does the same fallback client-side.
+Nothing enforces that a catalog id has a matching renderer entry, or vice
+versa — no test, no build check, no runtime error. A mismatch (typo, or added
+one side and forgot the other) fails **silently**: both sides independently
+fall back to the default template for any unknown id.
 
 So a broken new template doesn't error — it just quietly renders as the
 default everywhere, which is easy to mistake for "it worked." After adding a
-template, explicitly confirm the *new* id shows up distinctly in `/templates`
-and in the `/generate/templates` API response — don't just confirm nothing crashed.
+template, explicitly confirm the *new* id shows up distinctly in the preview
+gallery and in the template catalog response — don't just confirm nothing crashed.
 
-## Appendix: full source of the shared helpers and existing renderers
+## Appendix: reference implementations
 
-Paste these into context (or point the AI at these exact files) if generating
-templates without direct repo access — the prose contract above is a summary,
-this is ground truth.
+Paste these into context (or point an AI at them) if generating templates —
+the prose contract above is a summary, this is ground truth.
 
-`frontend/src/templates/common.jsx`:
+Shared helpers used by every renderer:
 
 ```jsx
 // Shared helpers for print/preview CV templates. Templates use inline styles so
@@ -215,7 +207,7 @@ export const contactBits = (c = {}) =>
 // section presence helpers keep templates tidy
 export const hasSkills = (cv) => cv?.skills && Object.keys(cv.skills).length > 0;
 
-// A4-ish page frame used by every template's PrintView.
+// A4-ish page frame used by every template's print view.
 export function Page({ children, style }) {
   return (
     <div
@@ -235,14 +227,14 @@ export function Page({ children, style }) {
 }
 ```
 
-`frontend/src/templates/SingleColumn.jsx` (the real ATS-safe renderer — `my_template`/`MyLayout` above are trimmed for readability, this is the actual full one with every section):
+Reference renderer — single-column, ATS-safe (the actual full one with every section; `MyLayout` above is trimmed for readability):
 
 ```jsx
 import { Page, contactBits, hasSkills } from "./common";
 
 // ATS-safe single-column template, parameterized by accent colour, font family and
-// heading style. Mirrors the backend pure-Python PDF/DOCX render so the on-screen
-// preview matches the "Download ATS" file. Used for ats_classic / ats_modern / ats_serif.
+// heading style. Mirrors the pure backend PDF/DOCX render so the on-screen
+// preview matches the downloaded file.
 export default function SingleColumn({ cv, accent = "#1a1a1a", font = "Helvetica, Arial, sans-serif", heading = "rule", nameSize = 26 }) {
   if (!cv) return null;
   const c = cv.contact || {};
@@ -320,14 +312,14 @@ export default function SingleColumn({ cv, accent = "#1a1a1a", font = "Helvetica
 }
 ```
 
-`frontend/src/templates/Sidebar.jsx` (the real designer/2-column renderer):
+Reference renderer — sidebar, designer (2-column):
 
 ```jsx
 import { Page, contactBits, hasSkills } from "./common";
 
 // Designer two-column template with a coloured sidebar (contact + skills + education)
 // and a roomy main column. NOT ATS-safe — used only for the on-screen designer preview
-// and print-to-PDF. Used for aurora / sidebar_pro (they differ only by colours).
+// and print-to-PDF.
 export default function Sidebar({ cv, accent = "#4F46E5", sidebarBg = "#4F46E5", sidebarFg = "#fff", font = "Inter, system-ui, sans-serif" }) {
   if (!cv) return null;
   const c = cv.contact || {};
