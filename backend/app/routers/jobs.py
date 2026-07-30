@@ -54,19 +54,50 @@ def _today() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
-def _check_and_bump_search_quota(db: Session, user: models.User) -> int | None:
+def _cache_and_record(db: Session, user: models.User, cache_model, result_model, out_cls,
+                      jobs: list[dict], cache_fields: list[str], search_keywords: str) -> list:
+    """Upsert each job into its cache table and this user's per-job save/dismiss
+    row, returning the *Out schema list for the response. Shared by every job
+    search source's search endpoint -- only the models/output class differ."""
+    out = []
+    for j in jobs:
+        cached = db.get(cache_model, j["job_id"])
+        if not cached:
+            cached = cache_model(job_id=j["job_id"])
+            db.add(cached)
+        for f in cache_fields:
+            setattr(cached, f, j[f])
+        # job_id columns here are bare ForeignKeys with no ORM relationship(),
+        # so the unit-of-work has no dependency info to order the insert --
+        # flush explicitly so the cache row exists before the result row.
+        db.flush()
+
+        row = db.query(result_model).filter(
+            result_model.user_id == user.id, result_model.job_id == j["job_id"]
+        ).first()
+        if not row:
+            row = result_model(user_id=user.id, job_id=j["job_id"], search_keywords=search_keywords,
+                               saved=False, dismissed=False)
+            db.add(row)
+        out.append(out_cls(
+            job_id=j["job_id"], title=j["title"], company=j["company"], location=j["location"],
+            posted_at=j["posted_at"], url=j["url"], saved=row.saved, dismissed=row.dismissed,
+        ))
+    return out
+
+
+def _check_and_bump_quota(db: Session, user: models.User, usage_model, limit: int) -> int | None:
     """Returns searches remaining today, or None if unlimited (paid plan).
     Raises 429 if the free daily limit is already used up."""
     if billing.is_paid(user):
         return None
     today = _today()
-    row = db.query(models.JobSearchUsage).filter(
-        models.JobSearchUsage.user_id == user.id, models.JobSearchUsage.date == today
+    row = db.query(usage_model).filter(
+        usage_model.user_id == user.id, usage_model.date == today
     ).first()
     if not row:
-        row = models.JobSearchUsage(user_id=user.id, date=today, search_count=0)
+        row = usage_model(user_id=user.id, date=today, search_count=0)
         db.add(row)
-    limit = settings.linkedin_free_daily_searches
     if row.search_count >= limit:
         raise HTTPException(status_code=429, detail=f"Daily search limit reached ({limit}/day on the free plan).")
     row.search_count += 1
@@ -79,7 +110,7 @@ def linkedin_search(q: str = Query(..., min_length=2), location: str = "", start
                     time_filter: str = "week", experience: str = "",
                     db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     _require_linkedin_enabled()
-    remaining = _check_and_bump_search_quota(db, user)
+    remaining = _check_and_bump_quota(db, user, models.JobSearchUsage, settings.linkedin_free_daily_searches)
 
     tpr = linkedin.TIME_FILTERS.get(time_filter, "")
     exp = linkedin.EXPERIENCE_LEVELS.get(experience, "")
@@ -89,33 +120,8 @@ def linkedin_search(q: str = Query(..., min_length=2), location: str = "", start
         raise opaque_502(log, "Web listings search failed", e)
 
     limit = settings.linkedin_paid_results_per_search if billing.is_paid(user) else settings.linkedin_free_results_per_search
-    results = results[:limit]
-
-    out = []
-    for j in results:
-        cached = db.get(models.LinkedInJobCache, j["job_id"])
-        if not cached:
-            cached = models.LinkedInJobCache(job_id=j["job_id"])
-            db.add(cached)
-        cached.title, cached.company, cached.location, cached.posted_at, cached.url = (
-            j["title"], j["company"], j["location"], j["posted_at"], j["url"]
-        )
-        # job_search_results.job_id has no ORM relationship() back to this table
-        # (just a bare FK column), so the unit-of-work has no dependency info to
-        # order the insert -- flush explicitly so the cache row exists first.
-        db.flush()
-
-        row = db.query(models.JobSearchResult).filter(
-            models.JobSearchResult.user_id == user.id, models.JobSearchResult.job_id == j["job_id"]
-        ).first()
-        if not row:
-            row = models.JobSearchResult(user_id=user.id, job_id=j["job_id"], search_keywords=q.strip(),
-                                         saved=False, dismissed=False)
-            db.add(row)
-        out.append(schemas.LinkedInJobOut(
-            job_id=j["job_id"], title=j["title"], company=j["company"], location=j["location"],
-            posted_at=j["posted_at"], url=j["url"], saved=row.saved, dismissed=row.dismissed,
-        ))
+    out = _cache_and_record(db, user, models.LinkedInJobCache, models.JobSearchResult, schemas.LinkedInJobOut,
+                            results[:limit], ["title", "company", "location", "posted_at", "url"], q.strip())
     db.commit()
     return schemas.LinkedInSearchOut(jobs=out, searches_remaining_today=remaining)
 
@@ -202,32 +208,12 @@ def patch_linkedin_job_action(job_id: str, payload: schemas.LinkedInActionIn, db
 # Kept on its own quota counter and cache table, independent from LinkedIn's.
 # ---------------------------------------------------------------------------
 
-def _check_and_bump_gemini_quota(db: Session, user: models.User) -> int | None:
-    """Returns searches remaining today, or None if unlimited (paid plan).
-    Raises 429 if the free daily limit is already used up."""
-    if billing.is_paid(user):
-        return None
-    today = _today()
-    row = db.query(models.GeminiSearchUsage).filter(
-        models.GeminiSearchUsage.user_id == user.id, models.GeminiSearchUsage.date == today
-    ).first()
-    if not row:
-        row = models.GeminiSearchUsage(user_id=user.id, date=today, search_count=0)
-        db.add(row)
-    limit = settings.gemini_free_daily_searches
-    if row.search_count >= limit:
-        raise HTTPException(status_code=429, detail=f"Daily search limit reached ({limit}/day on the free plan).")
-    row.search_count += 1
-    db.commit()
-    return limit - row.search_count
-
-
 @router.get("/gemini/search", response_model=schemas.GeminiSearchOut)
 def gemini_job_search(q: str = Query(..., min_length=2), location: str = "",
                       db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     if not gemini_search.enabled():
         return schemas.GeminiSearchOut(jobs=[], searches_remaining_today=None, enabled=False)
-    remaining = _check_and_bump_gemini_quota(db, user)
+    remaining = _check_and_bump_quota(db, user, models.GeminiSearchUsage, settings.gemini_free_daily_searches)
 
     limit = settings.gemini_paid_results_per_search if billing.is_paid(user) else settings.gemini_free_results_per_search
     try:
@@ -235,29 +221,8 @@ def gemini_job_search(q: str = Query(..., min_length=2), location: str = "",
     except gemini_search.GeminiSearchError as e:
         raise opaque_502(log, "AI search failed", e)
 
-    out = []
-    for j in results:
-        cached = db.get(models.GeminiJobCache, j["job_id"])
-        if not cached:
-            cached = models.GeminiJobCache(job_id=j["job_id"])
-            db.add(cached)
-        cached.title, cached.company, cached.location, cached.posted_at, cached.url, cached.description = (
-            j["title"], j["company"], j["location"], j["posted_at"], j["url"], j["description"]
-        )
-        # same ordering gap as linkedin_search above -- flush the cache row first.
-        db.flush()
-
-        row = db.query(models.GeminiSearchResult).filter(
-            models.GeminiSearchResult.user_id == user.id, models.GeminiSearchResult.job_id == j["job_id"]
-        ).first()
-        if not row:
-            row = models.GeminiSearchResult(user_id=user.id, job_id=j["job_id"], search_keywords=q.strip(),
-                                            saved=False, dismissed=False)
-            db.add(row)
-        out.append(schemas.GeminiJobOut(
-            job_id=j["job_id"], title=j["title"], company=j["company"], location=j["location"],
-            posted_at=j["posted_at"], url=j["url"], saved=row.saved, dismissed=row.dismissed,
-        ))
+    out = _cache_and_record(db, user, models.GeminiJobCache, models.GeminiSearchResult, schemas.GeminiJobOut,
+                            results, ["title", "company", "location", "posted_at", "url", "description"], q.strip())
     db.commit()
     return schemas.GeminiSearchOut(jobs=out, searches_remaining_today=remaining, enabled=True)
 

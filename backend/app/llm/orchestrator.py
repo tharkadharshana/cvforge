@@ -59,9 +59,4 @@ def _chain() -> LLMProvider:
     return providers[0] if len(providers) == 1 else _ChainProvider(providers)
 
 
-def drafter() -> LLMProvider:
-    return _chain()
-
-
-def critic() -> LLMProvider:
-    return _chain()
+drafter = critic = _chain
