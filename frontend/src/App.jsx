@@ -13,6 +13,7 @@ import Onboarding from "./pages/Onboarding";
 import BaseCV from "./pages/BaseCV";
 import Generate from "./pages/Generate";
 import JobSearch from "./pages/JobSearch";
+import TemplateGallery from "./pages/TemplateGallery";
 import Applications from "./pages/Applications";
 import ApplicationDetail from "./pages/ApplicationDetail";
 import Billing from "./pages/Billing";
@@ -44,6 +45,7 @@ export default function App() {
               <Route path="/jobs/search" element={<JobSearch />} />
               <Route path="/jobs" element={<Navigate to="/jobs/search" replace />} />
               <Route path="/jobs/linkedin" element={<Navigate to="/jobs/search" replace />} />
+              <Route path="/templates" element={<TemplateGallery />} />
               <Route path="/applications" element={<Applications />} />
               <Route path="/applications/:id" element={<ApplicationDetail />} />
               <Route path="/billing" element={<Billing />} />

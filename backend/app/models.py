@@ -66,6 +66,9 @@ class Application(Base):
     # job-fit evaluation (see cv/prompts.py::fit_score) computed pre-generation and
     # persisted here once a job exists, for the application history's record.
     fit_score: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # interview coaching (see cv/prompts.py::interview_prep) -- generated once on
+    # request and cached here so viewing it again doesn't re-charge a credit.
+    interview_prep: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     charged: Mapped[bool] = mapped_column(default=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

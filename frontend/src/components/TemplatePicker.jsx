@@ -1,10 +1,17 @@
+import { Link } from "react-router-dom";
 import { TEMPLATES } from "../templates/registry";
 
 // Grid of selectable templates with an ATS-safe badge vs a "Designer" warning tag.
 // `value` is the selected template id; `onSelect(id)` fires on click.
 export default function TemplatePicker({ value, onSelect, busy }) {
   return (
-    <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+    <div>
+      <div className="flex justify-end mb-2">
+        <Link to="/templates" target="_blank" rel="noreferrer" className="label text-accent">
+          Preview with sample data ↗
+        </Link>
+      </div>
+      <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
       {Object.entries(TEMPLATES).map(([id, t]) => {
         const active = id === value;
         return (
@@ -27,6 +34,7 @@ export default function TemplatePicker({ value, onSelect, busy }) {
           </button>
         );
       })}
+      </div>
     </div>
   );
 }

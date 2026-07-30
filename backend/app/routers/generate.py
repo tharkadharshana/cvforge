@@ -336,7 +336,39 @@ def get_application(app_id: int, db: Session = Depends(get_db), user: models.Use
         "template_overrides": a.template_overrides,
         "tracker_status": a.tracker_status,
         "tracker_updated_at": a.tracker_updated_at.isoformat() if a.tracker_updated_at else None,
+        "interview_prep": a.interview_prep,
     }
+
+
+@router.post("/applications/{app_id}/interview-prep", response_model=schemas.InterviewPrepOut)
+def interview_prep(app_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Interview coaching for a completed application -- CV-specific likely questions,
+    research topics, and questions to ask back. Generated once and cached: viewing it
+    again is free, only the first generation charges a credit."""
+    a = _get_app(db, user, app_id)
+    if a.status != "done":
+        raise HTTPException(status_code=409, detail="Application is not complete yet")
+    if a.interview_prep:
+        return schemas.InterviewPrepOut(**a.interview_prep)
+
+    if not billing.has_credits(user):
+        log.warning("interview_prep blocked user=%s: out of credits (%s)", user.id, user.credits)
+        audit.record("interview_prep", status="blocked", user_id=user.id,
+                     meta={"why": "no_credits", "credits": user.credits or 0, "application_id": app_id})
+        raise HTTPException(status_code=402, detail="Out of credits. Upgrade to prep for this interview.")
+
+    try:
+        sys, usr = prompts.interview_prep(a.tailored_cv, a.job_description, a.company, a.job_title)
+        prep = critic().complete_json(sys, usr)
+    except Exception as e:
+        raise opaque_502(log, "Interview prep failed", e)
+
+    a.interview_prep = prep
+    db.commit()
+    billing.charge_generation(db, user, ref=f"interview:{a.id}")
+    audit.record("interview_prep", status="ok", user_id=user.id,
+                 meta={"application_id": a.id, "credits_after": user.credits})
+    return schemas.InterviewPrepOut(**prep)
 
 
 @router.patch("/applications/{app_id}/tracker")

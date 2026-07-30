@@ -243,3 +243,22 @@ def critique(tailored_cv: dict, cover_letter_text: str, job_description: str) ->
         f"Job description:\n\"\"\"\n{job_description}\n\"\"\""
     )
     return system, user
+
+
+def interview_prep(tailored_cv: dict, job_description: str, company: str, job_title: str) -> tuple[str, str]:
+    system = (
+        "You are an experienced interview coach. Given a candidate's tailored CV and the job description, "
+        "prepare them for the interview. Base every question on the actual CV content and job requirements -- "
+        "reference specific experience, projects, or skills from the CV where relevant, not generic questions. "
+        "Output JSON only."
+    )
+    user = (
+        "Return JSON: {\"likely_questions\": [{\"question\": \"\", \"why_asked\": \"\", "
+        "\"suggested_approach\": \"\"}], \"topics_to_research\": [..], \"questions_to_ask_them\": [..]}\n\n"
+        "6-10 likely_questions covering behavioral, technical, and CV-specific gaps. 3-6 topics_to_research "
+        "about the company/role. 4-6 smart questions_to_ask_them that show genuine interest.\n\n"
+        f"Job title: {job_title}\nCompany: {company}\n\n"
+        f"Job description:\n\"\"\"\n{job_description}\n\"\"\"\n\n"
+        f"Candidate's tailored CV JSON:\n{json.dumps(tailored_cv, ensure_ascii=False)}"
+    )
+    return system, user
