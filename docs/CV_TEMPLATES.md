@@ -11,6 +11,25 @@ A template is registered in two places, and both must use the same id:
    for a designer template, nothing beyond identity — see below).
 2. A **renderer** — a function that takes CV data and produces the visual layout.
 
+## Required output: always produce all three pieces
+
+A template isn't done until all three of these exist, every time — this is
+the single most common mistake (producing a component with no registry
+entry means it's registered nowhere and can't be selected — it silently
+doesn't exist as far as the picker/gallery/catalog are concerned):
+
+1. **Catalog entry** — the Python-shaped dict from "1. Catalog entry" below.
+2. **Registry entry** — the `id: { name, ats_safe, render: (cv) => <... /> }`
+   entry from "2. Renderer" below. Reusing `SingleColumn`/`Sidebar` needs only
+   this plus the props; a brand-new layout needs this *and* #3, and the two
+   must reference each other (registry entry's `render` calls the new component).
+3. **Component** — only when reusing `SingleColumn`/`Sidebar` isn't enough
+   (see "3. Building a brand-new layout").
+
+If asked to generate "a template," output all applicable pieces together,
+labeled, ready to paste — not just the component. A component with no
+registry entry is an incomplete deliverable.
+
 ## The data contract: `CVData`
 
 Every template renders the same shape, always. All fields have defaults
@@ -154,13 +173,25 @@ export default function MyLayout({ cv, accent = "#1a1a1a", font = "Helvetica, Ar
 }
 ```
 
-Hard rules for any new renderer (all come from how print/preview actually works — breaking them breaks the download or the preview, not just looks):
+...and its registry entry — every custom component needs one, this is what actually makes it selectable:
+
+```jsx
+my_template: {
+  name: "My Template", ats_safe: false,
+  render: (cv) => <MyLayout cv={cv} accent="#1a1a1a" font="Helvetica, Arial, sans-serif" />,
+},
+```
+
+Hard rules for any new renderer (all come from how print/preview actually works, or from a real mistake made by a previous AI-generated template — breaking them breaks the download, the preview, or silently drops the user's data, not just looks):
 
 - **Inline styles only, no utility CSS classes, no dark-theme awareness.** Templates render on a white page for print-to-PDF and the live preview — they must look identical regardless of the app's own theme. Every reference renderer does 100% inline `style={{...}}`.
-- **Wrap the whole thing in `Page`** — it sets the `210mm` A4 width/height every renderer and the print stylesheet assumes.
+- **Wrap the whole thing in `Page`**, and never override its `overflow`. `Page` only sets `minHeight` (no fixed `height`) so multi-page CVs can flow naturally — a component that spreads its own `style` into `Page` and includes `overflow: "hidden"` will silently **clip** any CV whose content runs past one page. None of the reference renderers do this; don't introduce it.
+- **Render every top-level `CVData` list field**: `skills`, `experience`, `projects`, `education`, `certifications`, `awards`, `languages`. A previous generated template quietly dropped `projects` entirely — the user's project entries just vanished with no error. If a design genuinely omits a section on purpose, say so explicitly in a comment; don't just forget one.
+- **There is no standalone job-title/headline field in `CVData`.** If a layout wants a role line under the name (common in designer templates), derive it from `cv.experience?.[0]?.title || ""` — don't render an empty placeholder element for a field that doesn't exist; that leaves a permanent blank gap in every single CV.
 - **Guard every optional field.** `cv.experience?.length > 0`, `hasSkills(cv)`, etc. — an empty CV must render without crashing (this is exactly what the free sample-data preview exercises, but real user CVs will have gaps too).
 - **`contactBits(c)`** returns the non-empty contact fields already filtered and ready to join — use it instead of hand-rolling the same filter.
 - If ATS-safe, keep the layout single-column and close to the single-column reference structure — the point of ATS-safe is that it matches what actually gets downloaded; a wildly different on-screen layout for an ATS-safe id would mislead the user about what they're going to download.
+- **Treat print-fragile CSS with suspicion**: `clip-path`, negative margins that pull content across where a page break could land, absolutely-positioned decorative shapes. These can look fine on screen and render inconsistently (or not at all) in an actual browser print-to-PDF pass. None of the reference renderers use them. If a design needs one, flag it explicitly and say it needs a real PDF download test before shipping — don't present it as done.
 
 ### That's it
 
@@ -171,11 +202,17 @@ catalog endpoint.
 
 ## Testing a new template
 
-1. Add both entries above (three if you wrote a new renderer).
+1. Confirm all applicable pieces from "Required output" exist — a component
+   with no registry entry is the most common miss and produces no error, it
+   just makes the id unselectable.
 2. Open the free preview gallery — confirms the render works against sample
    data, free, no credits, and catches any crash on missing/empty fields immediately.
+   Check every CVData section actually shows up (the sample data populates all
+   of them, so a missing section here means a missing section in the component).
 3. Generate a real CV once with the new template id and download both PDF and
-   DOCX — the two output formats are separate render paths, check both if ATS-safe.
+   DOCX if ATS-safe — the two output formats are separate render paths, check
+   both. If the design uses print-fragile CSS (see hard rules), this step is
+   not optional — a clean on-screen preview doesn't mean the PDF matches.
 
 ## Gotcha: the catalog and renderer are not validated against each other
 
