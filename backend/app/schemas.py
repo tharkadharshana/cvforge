@@ -301,6 +301,18 @@ class CritiqueOut(BaseModel):
     meets_ats_guarantee: bool = True
 
 
+class InterviewQuestion(BaseModel):
+    question: str
+    why_asked: str = ""
+    suggested_approach: str = ""
+
+
+class InterviewPrepOut(BaseModel):
+    likely_questions: list[InterviewQuestion] = []
+    topics_to_research: list[str] = []
+    questions_to_ask_them: list[str] = []
+
+
 class GenerateOut(BaseModel):
     application_id: int
     tailored_cv: CVData

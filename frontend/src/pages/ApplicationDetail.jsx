@@ -136,6 +136,72 @@ export function ReevaluateButton({ applicationId, free, onDone }) {
   );
 }
 
+export function InterviewPrepButton({ applicationId, onDone }) {
+  const { refresh: refreshCredits } = useCredits();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [paywall, setPaywall] = useState(false);
+
+  const run = async () => {
+    setErr(""); setPaywall(false); setBusy(true);
+    try {
+      const prep = await api.interviewPrep(applicationId);
+      onDone(prep);
+      refreshCredits();
+    } catch (e) {
+      if (e.status === 402) setPaywall(true);
+      else setErr(e.message);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-2">
+      <button className="btn-ghost text-[11px] px-3 py-2" disabled={busy} onClick={run}>
+        {busy ? "Preparing…" : "🎤 Prep for interview (1 credit)"}
+      </button>
+      {paywall && <div className="text-[12px]"><Link to="/billing" className="text-accent">Out of credits — top up →</Link></div>}
+      {err && <Banner>{err}</Banner>}
+    </div>
+  );
+}
+
+export function InterviewPrepPanel({ prep }) {
+  if (!prep) return null;
+  return (
+    <div className="panel p-5 space-y-4">
+      <h2 className="label">Interview prep</h2>
+      <div>
+        <div className="label mb-2 text-good">Likely questions</div>
+        <div className="space-y-3">
+          {(prep.likely_questions || []).map((q, i) => (
+            <div key={i} className="border-l-2 border-line2 pl-3">
+              <div className="font-display font-semibold text-[14px]">{q.question}</div>
+              {q.why_asked && <div className="font-mono text-[11px] text-muted mt-0.5">Why: {q.why_asked}</div>}
+              {q.suggested_approach && <div className="text-[13px] text-muted mt-1">{q.suggested_approach}</div>}
+            </div>
+          ))}
+        </div>
+      </div>
+      {prep.topics_to_research?.length > 0 && (
+        <div>
+          <div className="label mb-1.5">Research before you go in</div>
+          <ul className="list-disc ml-5 font-mono text-[12px] text-muted space-y-1">
+            {prep.topics_to_research.map((x, i) => <li key={i}>{x}</li>)}
+          </ul>
+        </div>
+      )}
+      {prep.questions_to_ask_them?.length > 0 && (
+        <div>
+          <div className="label mb-1.5">Questions to ask them</div>
+          <ul className="list-disc ml-5 font-mono text-[12px] text-muted space-y-1">
+            {prep.questions_to_ask_them.map((x, i) => <li key={i}>{x}</li>)}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Chips({ items, tone }) {
   if (!items?.length) return <span className="font-mono text-[12px] text-muted">none</span>;
   const cls = tone === "good" ? "border-good/40 text-good" : tone === "bad" ? "border-bad/40 text-bad" : "border-line2 text-muted";
@@ -267,6 +333,9 @@ export default function ApplicationDetail() {
               ? <ReevaluateButton applicationId={app.id} free={true} onDone={setApp} />
               : <ImproveButton applicationId={app.id} onImproved={onImproved} />
           )}
+          {!editing && !app.interview_prep && (
+            <InterviewPrepButton applicationId={app.id} onDone={(prep) => setApp({ ...app, interview_prep: prep })} />
+          )}
           {!editing && <button className="btn-ghost text-[11px] px-3 py-2" onClick={() => setShowPicker((v) => !v)}>🎨 Template</button>}
           {!editing && <button className="btn-ghost text-[11px] px-3 py-2" onClick={startEdit}>✎ Edit CV</button>}
           {!editing && <VerifyButton applicationId={app.id} />}
@@ -298,6 +367,7 @@ export default function ApplicationDetail() {
       )}
 
       {!editing && !stale && <CritiquePanel critique={app.critique} />}
+      {!editing && <InterviewPrepPanel prep={app.interview_prep} />}
 
       <div>
         <div className="flex items-center justify-between mb-2">
